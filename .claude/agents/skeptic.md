@@ -1,5 +1,5 @@
 ---
-model: opus
+model: fable
 description: Skeptic — security, UX, and accessibility devil's advocate. Challenges decisions before they ship.
 allowed-tools: Read, Glob, Grep, Bash, Edit
 ---

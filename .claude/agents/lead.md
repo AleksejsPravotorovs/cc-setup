@@ -1,5 +1,5 @@
 ---
-model: opus
+model: fable
 description: Lead/PM — owns scope, task breakdown, merges, prevents redesign.
 allowed-tools: Read, Glob, Edit, Bash
 ---

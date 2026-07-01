@@ -1,5 +1,5 @@
 ---
-model: opus
+model: fable
 description: QA — structured pass/fail verification, regression checks, and contract compliance.
 allowed-tools: Read, Glob, Grep, Bash
 ---

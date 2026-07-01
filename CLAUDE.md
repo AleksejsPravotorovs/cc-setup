@@ -1,5 +1,20 @@
 @AGENTS.md
 
+<!-- FLEET:GROUNDTRUTH (managed by fleet-upgrade.sh — verify & expand per repo) -->
+## STACK — GROUND TRUTH (read before touching any UI)
+
+This project is **UNKNOWN — confirm before editing**. Reason about THIS stack only — do not
+assume a different framework. shadcn/ui is React-only; ignore it unless this is a
+React project.
+
+Build / verify: confirm the real build command from package.json/config
+
+"Done" means the build passes AND the page renders correctly (screenshot it) and
+`qa/visible-content-checklist.md` passes — not "the code looks right".
+NOTE (fleet stub): confirm the file layout & tokens by reading the repo, then
+expand this section with the real directories, design tokens and conventions.
+<!-- /FLEET:GROUNDTRUTH -->
+
 <!-- BEGIN: FRONTEND_SKILL_POLICY (managed by propagate-frontend-policy.sh — do not edit between markers) -->
 ## Frontend Skill Policy (SPSS)
 

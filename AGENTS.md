@@ -59,7 +59,7 @@ If violated: diagnose, update AGENTS.md + `.claude/PROMPT_FREE_PROTOCOL.md` + sn
 `.claude/agents/`: lead, frontend, backend, devops, skeptic, qa, researcher (and strategist on marketing projects).
 Launch: `./scripts/start.sh`.
 
-**Model policy:** ALL agents run as **Opus 4.8** (`claude-opus-4-8`). Fable 5 is NOT used — it has repeatedly failed to start in this environment, leaving agents dead on spawn. Every agent .md carries `model: claude-opus-4-8` frontmatter (project + `~/.claude/agents/`), AND every `Agent(...)` spawn must pass `model: "opus"` explicitly. New agent .md files must include the model line. GSD agents are governed by `/gsd:set-profile` instead.
+**Model policy:** ALL agents run as **Fable 5** (alias `fable`) - the main and ONLY usable model; Fable 5 is back and stable. Every agent .md carries `model: fable` frontmatter (project + `~/.claude/agents/`), AND every `Agent(...)` spawn must pass `model: "fable"` explicitly. NEVER pin a dated/closed id (e.g. `claude-opus-4-8`) - the alias survives retirements. New agent .md files must include the model line. GSD agents are governed by `/gsd:set-profile` instead.
 
 
 <!-- FLEET:AGENT-SHUTDOWN (managed by agent-team-shutdown-upgrade.sh) -->
@@ -92,3 +92,28 @@ for blocked dependencies that leave a teammate idle with nothing to claim.
 Self-audit: "□ Teammate idle/done? -> shut it down AND confirm the pane/process
 is actually gone (not merely acknowledged)."
 <!-- /FLEET:AGENT-SHUTDOWN -->
+
+<!-- FLEET:RULE0 (managed by fleet-upgrade.sh — do not duplicate) -->
+## Rule 0 — THINK FIRST (most important rule — overrides speed)
+
+PROMPT-FREE means *don't pester the user* — it does NOT mean *don't think*.
+Before any non-trivial change, every agent (lead and teammates) MUST, silently:
+1. Restate the goal in one sentence — what does "good" look like to the user,
+   not just "a thing that exists"? State assumptions instead of guessing.
+2. Read before writing — open the real files you'll touch (confirm the stack
+   from CLAUDE.md GROUND TRUTH), the tokens, the existing pattern. Never act on
+   an assumed structure.
+3. Plan — exact files, exact edits, states (loading/empty/error/success,
+   mobile+desktop, i18n if present). Smallest correct change; no rewrites unless asked.
+4. Predict the 2-3 likely failure modes and design the edit so they can't happen.
+5. Self-critique after editing, BEFORE claiming done — re-read your diff as the
+   skeptic, run the build, run `qa/visible-content-checklist.md`. "Done" = verified
+   build + render, NOT "the code exists". "It probably works" = not done.
+
+## Model policy (fleet)
+ALL agents run as **Fable 5**. Agent .md frontmatter = `model: fable`; every
+`Agent(...)` spawn passes `model: "fable"`. NEVER pin a dated/closed model id
+(e.g. `claude-opus-4-8`) — use the alias `fable` so it survives retirements.
+If an agent still spawns as Opus 4.8, the leftover is in user-level
+`~/.claude/` (agents, settings.json `model`, CLAUDE.md) — fix it there too.
+<!-- /FLEET:RULE0 -->

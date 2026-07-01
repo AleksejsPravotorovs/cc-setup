@@ -1,5 +1,5 @@
 ---
-model: opus
+model: fable
 description: Backend — API endpoints, database, auth, server logic.
 allowed-tools: Read, Glob, Edit, Bash
 ---

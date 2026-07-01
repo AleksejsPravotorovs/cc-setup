@@ -1,5 +1,5 @@
 ---
-model: opus
+model: fable
 description: Frontend — implements UI pages, components, and client-side logic.
 allowed-tools: Read, Glob, Edit, Bash
 ---
