@@ -16,7 +16,7 @@ feature requests and updates do NOT need it. Classify before spawning anything:
 | Size | Signals | Engine |
 |------|---------|--------|
 | **S** | <=2 files, single layer, no schema/auth/payment/deploy surface | **No team, no subagents.** Implement directly, run Rule 0 self-critique + build/render check, done. |
-| **M** | single layer, <=5 files, clear spec, low blast radius | **2 subagents, no TeamCreate:** 1 builder + 1 combined reviewer (skeptic+QA in one prompt). Spawn builder; spawn reviewer only after builder reports done. |
+| **M** | single layer, <=5 files, clear spec, low blast radius | **2 subagents, no team:** 1 builder + 1 combined reviewer (skeptic+QA in one prompt). Spawn builder; spawn reviewer only after builder reports done. Subagents report back to you - no inter-agent messaging needed at this size. |
 | **L** | cross-layer (front+back+infra), genuinely parallel workstreams, contested scope | **Full team** (Phases 0-4 below), 2-4 teammates max. |
 
 - The "lead never implements" rule applies ONLY in team mode (L). In S/M there is no
@@ -74,15 +74,23 @@ agent, acceptance criteria, merge order. Build the CONTEXT PACK here - one repo 
 reused by every teammate.
 
 ### Phase 1: Spawn team (official mechanism - MANDATORY)
-1. **`TeamCreate`** - create the team with a descriptive name
-2. **`TaskCreate`** - 2-4 tasks per teammate with acceptance criteria and dependencies
-   (`addBlockedBy`); review/QA tasks blocked by implementation tasks
-3. **`Agent`** tool - spawn BUILDERS ONLY first, all in one message, each with:
-   - `team_name`, `name` (e.g. "frontend", "backend")
+As of Claude Code v2.1.178 there is NO `TeamCreate`/`TeamDelete` - the team forms
+automatically when the first teammate is spawned, and team resources are cleaned up
+automatically when the lead session exits. `team_name` on `Agent(...)` is accepted but
+ignored - do not pass it or wait on team setup.
+
+1. **`TaskCreate`** - 2-4 tasks per teammate with acceptance criteria and dependencies
+   (`addBlockedBy`); review/QA tasks blocked by implementation tasks. (Official docs
+   suggest 5-6 per teammate; we deliberately run fewer/bigger to cut claim/report overhead.)
+2. **`Agent`** tool - spawn BUILDERS ONLY first, all in one message, each with:
+   - `name` (e.g. "frontend", "backend") - predictable names for later SendMessage
    - `model: "fable"`, `mode: "bypassPermissions"`, `run_in_background: true`
    - `prompt`: CONTEXT PACK + their contract slice + BLANKET PERMISSION block
-     (teammates do NOT inherit lead conversation history)
-4. Spawn reviewer(s) when the first implementation task completes, not before
+     (teammates auto-load CLAUDE.md/skills/MCP but NOT the lead's conversation history)
+3. Spawn reviewer(s) when the first implementation task completes, not before
+4. Known limits (experimental): one team per session; no nested teams (teammates cannot
+   spawn teammates); in-process teammates cannot run background subagents; `/resume`
+   does not restore in-process teammates - respawn instead
 
 **Team size**: 2-4 teammates. Three focused teammates outperform five scattered ones.
 
@@ -119,7 +127,9 @@ respawning fresh reviewers each cycle; fix cycles for LOW findings.
    pane (Claude Code #29787): `tmux kill-pane` on the teammate pane (never the lead),
    or `scripts/stop.sh` for full teardown.
 4. Session end = exit the lead session (`/exit`), which auto-terminates remaining
-   teammates. `scripts/stop.sh` is the hard fallback.
+   teammates and auto-cleans team directories (no TeamDelete step exists anymore).
+   `scripts/stop.sh` is the hard fallback; the task-list dir under `~/.claude/tasks/`
+   persists by design for resumed sessions.
 5. Update `findings.md` (repo root) with resolved items.
 
 ## Findings automation
@@ -136,9 +146,11 @@ respawning fresh reviewers each cycle; fix cycles for LOW findings.
 - If an agent starts doing another agent's job, STOP and redirect
 
 ## Prerequisites & display
-- Claude Code v2.1.32+, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, `teammateMode` in
-  settings.json: `"tmux"` (split panes), `"in-process"`, or `"auto"` (default - panes
-  when inside tmux). Split panes need tmux or iTerm2 (`it2` CLI).
+- Claude Code v2.1.178+, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, `teammateMode` in
+  settings.json. Default is `"in-process"` since v2.1.179 - our fleet sets `"tmux"`
+  explicitly for split panes (each teammate in its own pane; click to interact).
+  Split panes need tmux or iTerm2 (`it2` CLI); not supported in VS Code terminal,
+  Windows Terminal, or Ghostty.
 - Navigation: Shift+Down cycles teammates (in-process) / click pane (tmux); Ctrl+T task
   list; Escape interrupts; Alt+Arrows move panes; prefix+z zooms.
 - Launch: if not already in tmux, start with `./scripts/start.sh`.
