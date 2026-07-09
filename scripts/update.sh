@@ -114,6 +114,14 @@ for root_doc in AGENTS.md CLAUDE.md; do
   curl -fsSL "$REPO_URL/$root_doc" -o "$PROJECT_DIR/$root_doc" 2>/dev/null || warn "    (missing remotely — skipped)"
 done
 
+# Guardrails Kit playbooks (docs/guardrails/) — on-demand docs the CLAUDE.md
+# GUARDRAILS_KIT block routes to. The always-loaded core rides in CLAUDE.md above.
+mkdir -p "$PROJECT_DIR/docs/guardrails"
+for gd in PLAN CODE TRAPS DEBUG VERIFY EFFICIENCY SESSION _FORMAT; do
+  echo "  docs/guardrails/$gd.md"
+  curl -fsSL "$REPO_URL/docs/guardrails/$gd.md" -o "$PROJECT_DIR/docs/guardrails/$gd.md" 2>/dev/null || warn "    (missing remotely — skipped)"
+done
+
 # Protocol mirror inside .claude/ (agent-facing)
 echo "  .claude/PROMPT_FREE_PROTOCOL.md"
 curl -fsSL "$REPO_URL/.claude/PROMPT_FREE_PROTOCOL.md" -o "$PROJECT_DIR/.claude/PROMPT_FREE_PROTOCOL.md" 2>/dev/null || warn "    (missing remotely — skipped)"
