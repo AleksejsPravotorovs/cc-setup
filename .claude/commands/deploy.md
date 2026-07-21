@@ -3,17 +3,19 @@ description: Commit, deploy, verify, and snapshot session state for next prime
 allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 ---
 
-# /deploy — Commit & Deploy
+# /deploy – Commit & Deploy
+
+**Model routing v2:** /deploy runs inline. If a helper agent is spawned: code verification / build debugging -> `model: "fable"`; snapshot/state-file template fill (steps 6-7) -> `model: "opus"` is fine.
 
 ## 1) Pre-flight (parallel)
 
 Run all at once:
-- `git status` — uncommitted changes?
-- `git remote -v` — remote configured?
-- `git branch --show-current` — current branch?
-- Glob `.vercel/project.json` OR `netlify.toml` — hosting connected?
-**If no remote**: STOP — "No git remote."
-**If no changes**: Ask — "Working tree clean. Force deploy? (y/n)"
+- `git status` – uncommitted changes?
+- `git remote -v` – remote configured?
+- `git branch --show-current` – current branch?
+- Glob `.vercel/project.json` OR `netlify.toml` – hosting connected?
+**If no remote**: STOP – "No git remote."
+**If no changes**: Ask – "Working tree clean. Force deploy? (y/n)"
 
 ## 2) Build gate
 
@@ -54,14 +56,14 @@ git push origin <current-branch>
 
 ## 6) Session snapshot (local, full history)
 
-Append a dated entry to `.claude/snapshots/last-deploy.md` **via Bash heredoc** (the path is protected — see `.claude/PROMPT_FREE_PROTOCOL.md`, Rule 1).
+Append a dated entry to `.claude/snapshots/last-deploy.md` **via Bash heredoc** (the path is protected – see `.claude/PROMPT_FREE_PROTOCOL.md`, Rule 1).
 
-Append-only (never overwrite — the file is the long-term deploy log). Use this shape:
+Append-only (never overwrite – the file is the long-term deploy log). Use this shape:
 
 ```markdown
 ---
 
-## YYYY-MM-DD — [one-line summary]
+## YYYY-MM-DD – [one-line summary]
 
 **HEAD:** `<hash>` on `<branch>`
 **Live:** <url or N/A>
@@ -78,7 +80,7 @@ Append-only (never overwrite — the file is the long-term deploy log). Use this
 
 ## 7) Obsidian project-state file (token-lean, for /prime)
 
-Write a compact state file to the Obsidian vault. **This is what the next `/prime` will read first** — keep it ≤40 lines.
+Write a compact state file to the Obsidian vault. **This is what the next `/prime` will read first** – keep it ≤40 lines.
 
 ```bash
 VAULT="$HOME/Desktop/My AI Knowledge Base"
@@ -87,21 +89,21 @@ NOTE=$(grep -rl "local_path: $CWD$" "$VAULT/Projects" 2>/dev/null | head -1)
 if [ -n "$NOTE" ]; then
   SLUG=$(basename "$NOTE" .md)
   STATE_FILE="$VAULT/Projects/${SLUG}-state.md"
-  # Overwrite with compact current state — /prime reads this as its primary source
+  # Overwrite with compact current state – /prime reads this as its primary source
   cat > "$STATE_FILE" <<EOF
 ---
-title: ${SLUG} — current state
+title: ${SLUG} – current state
 source: /deploy
 updated: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 branch: <BRANCH>
 head: <SHORT_HASH>
 ---
 
-# ${SLUG} — Current state
+# ${SLUG} – Current state
 
 **Live:** <LIVE_URL or N/A>
 **Build:** <pass/fail>
-**Routes / output:** <if relevant — e.g., "288 prerendered HTML">
+**Routes / output:** <if relevant – e.g., "288 prerendered HTML">
 
 ## Recently shipped (this deploy)
 - <commit subject / 1–3 bullets on what changed>
@@ -114,17 +116,17 @@ head: <SHORT_HASH>
 - <paths or systems>
 
 ## Follow-ups / user TODOs
-- <item or "—">
+- <item or "–">
 EOF
   echo "State file: $STATE_FILE"
 else
-  echo "State file: no matching project note in vault — skipping."
+  echo "State file: no matching project note in vault – skipping."
 fi
 ```
 
-Fill the `<PLACEHOLDERS>` with real values from the deploy before writing. The file is OVERWRITTEN every deploy (not appended — it's a live snapshot, not a log).
+Fill the `<PLACEHOLDERS>` with real values from the deploy before writing. The file is OVERWRITTEN every deploy (not appended – it's a live snapshot, not a log).
 
-If the vault is missing or the project has no Obsidian note: log one line and continue — never fail the deploy.
+If the vault is missing or the project has no Obsidian note: log one line and continue – never fail the deploy.
 
 ## 8) Output report
 
@@ -147,10 +149,10 @@ After the state file is written and the deploy report is printed, invoke the `/c
 Call it as:
 
 ```
-/claude-obsidian:save [project-slug] — [commit-subject] ([YYYY-MM-DD])
+/claude-obsidian:save [project-slug] – [commit-subject] ([YYYY-MM-DD])
 ```
 
-Example: `/claude-obsidian:save techaccounting — nav merge PR #20 (2026-04-24)`
+Example: `/claude-obsidian:save techaccounting – nav merge PR #20 (2026-04-24)`
 
 The note should include:
 - Project / repo name
@@ -159,4 +161,4 @@ The note should include:
 - Follow-up / backlog items (copied from snapshot)
 - Link to production URL
 
-**Fail-safe**: if the vault is missing, Obsidian plugin not installed, or the save skill errors, log a single-line warning and continue — never fail the deploy on a save error. Cross-project retrieval in future sessions uses `/claude-obsidian:wiki-query` (aliases: "query: …", "what do you know about …", "based on the wiki …").
+**Fail-safe**: if the vault is missing, Obsidian plugin not installed, or the save skill errors, log a single-line warning and continue – never fail the deploy on a save error. Cross-project retrieval in future sessions uses `/claude-obsidian:wiki-query` (aliases: "query: …", "what do you know about …", "based on the wiki …").

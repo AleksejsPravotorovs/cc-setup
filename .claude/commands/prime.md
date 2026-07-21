@@ -1,119 +1,75 @@
 ---
-description: Lean codebase prime — context load (Claude Code) + Obsidian vault context
+description: Fast lean prime – repo state + snapshot + vault state in one pass, then work
 allowed-tools: Read, Glob, Bash
 ---
 
-# /prime — Lean Prime
+# /prime – Fast Lean Prime
 
-Role: GSD Execution Partner (senior engineer + pragmatic PM). Ship smallest correct change. Be direct. Prevent scope creep.
+Load just enough to start working, in ONE pass, target under ~30s. CLAUDE.md is
+already in context: do NOT re-read it or any style/token files. Do not assume a
+stack (Next.js/src) – confirm it from the file listing below.
 
-## 1) Codebase prime (Glob-first, minimal reads)
-
-CLAUDE.md is ALREADY in system context. Do NOT re-read it. Do NOT read style/token CSS files (conventions are documented in CLAUDE.md).
-
-**Glob only** (structure scan, no file reads):
-- `src/app/**/page.tsx`, `src/pages/*.tsx` — route inventory
-- `src/app/**/route.ts`, `api/*.ts` — API endpoints
-- `src/components/ui/*/index.ts`, `src/components/*.tsx` — UI inventory
-- `src/lib/**/*.ts` — utilities
-- `.claude/agents/*.md` — agent roster
-- `scripts/*.sh` — available scripts
-
-**Read only these** (compact sources only — keep prime under ~2k tokens):
-- `package.json` — use `Read` with `limit: 50` (scripts + key deps only; skip lockfile-level detail).
-- Previous-session context — see §2 fallback chain. **Do NOT read full `.claude/snapshots/last-deploy.md`** (grows unbounded; often >50KB on mature projects).
-
-**Report** (compact, no duplication of CLAUDE.md):
-```
-Routes: [list from glob]
-API: [list from glob]
-UI-kit / components: [names from glob]
-Lib: [utility files]
-Agents: [names from .claude/agents/]
-Scripts: [scripts/ + package.json scripts block]
-Deps: [key deps from package.json]
-Missing/unexpected: [anything notable]
-```
-
-## 2) Previous-session context (token-lean, ordered fallback)
-
-**Source priority — use the FIRST source that exists, stop there:**
-
-**A. Obsidian project-state file (preferred, authored by /deploy, ≤40 lines):**
+## Run this single Bash block, then read at most ONE file, then STOP
 
 ```bash
-VAULT="$HOME/Desktop/My AI Knowledge Base"
-CWD="$(pwd)"
-NOTE=$(grep -rl "local_path: $CWD$" "$VAULT/Projects" 2>/dev/null | head -1)
-if [ -n "$NOTE" ]; then
-  SLUG=$(basename "$NOTE" .md)
-  STATE="$VAULT/Projects/${SLUG}-state.md"
-  [ -f "$STATE" ] && echo "STATE_FILE=$STATE"
+echo "== recent commits (latest updates) =="
+git log --oneline -8 2>/dev/null
+echo "== uncommitted =="
+git status --short 2>/dev/null | head -40
+echo "== top-level layout =="
+ls -1 2>/dev/null
+echo "== last snapshot entry =="
+SNAP=".claude/snapshots/last-deploy.md"
+[ -f "$SNAP" ] && awk 'BEGIN{buf=""} /^---$/{buf=""; next} {buf=buf $0 "\n"} END{printf "%s", buf}' "$SNAP"
+echo "== My AI Knowledge Base state file =="
+VAULT="${OBSIDIAN_VAULT:-$HOME/Desktop/My AI Knowledge Base}"
+NOTE=$(grep -rl "local_path: $(pwd)$" "$VAULT/Projects" 2>/dev/null | head -1)
+[ -n "$NOTE" ] && echo "STATE=$VAULT/Projects/$(basename "$NOTE" .md)-state.md" || echo "STATE=(none)"
+echo "== LAUNCH PLAN (this repo, if present) =="
+PLAN="LAUNCH-PLAN.md"
+if [ -f "$PLAN" ]; then
+  PTOTAL=$(grep -cE '^- \[[ xX]\] \*\*P' "$PLAN" 2>/dev/null || true)
+  PDONE=$(grep -cE '^- \[[xX]\] \*\*P' "$PLAN" 2>/dev/null || true)
+  NPEND=$(grep -cE '^- \[ \] \*\*N' "$PLAN" 2>/dev/null || true)
+  echo "Progress: ${PDONE}/${PTOTAL} P-steps done · ${NPEND} external (N) tasks still open"
+  echo "-- next unchecked P-step --"
+  grep -nE '^- \[ \] \*\*P' "$PLAN" 2>/dev/null | head -1 || echo "(all P-steps checked – plan complete)"
+  echo ">> STRICT PLAN MODE: the task IS the next unchecked P-step. Read it in LAUNCH-PLAN.md, run its prompt, verify, then mark it [x]. Do NOT skip ahead or improvise."
+else
+  echo "(no LAUNCH-PLAN.md – normal prime)"
 fi
 ```
 
-If `STATE_FILE=...` printed → Read that file (compact by design). Done. Skip B.
+If a `STATE=<path>` is printed and the file exists, Read that ONE file – it is the
+compact (<=40 line) project state written by /deploy and is the only vault read
+needed. That IS the "info from My AI Knowledge Base".
 
-**B. Fallback — LAST section of `.claude/snapshots/last-deploy.md`** (everything after the final `---` separator):
+## Strict plan mode (only when LAUNCH-PLAN.md exists in this repo)
 
-```bash
-SNAP=".claude/snapshots/last-deploy.md"
-[ -f "$SNAP" ] && awk 'BEGIN{buf=""} /^---$/{buf=""; next} {buf=buf $0 "\n"} END{printf "%s", buf}' "$SNAP"
+If the Bash block printed a `next unchecked P-step`, this repo is on a launch plan.
+After the report, do NOT ask "what do you want to work on?" – the task is fixed:
+open `LAUNCH-PLAN.md`, execute the NEXT unchecked P-step exactly (each step is a
+self-contained prompt), then mark that line `[x]`. Follow the plan order and the
+"Зависит от" dependencies; only deviate if the user explicitly overrides. External
+`N` tasks (N1–N5) are human/parallel – surface them but do not try to "do" them in code.
+
+## Removed on purpose (the slow, redundant second pass)
+Do NOT: read the full Obsidian project NOTE or its Related/Skills/Vault-knowledge
+sections, tail the vault activity log, run MCP verification, or glob for
+src/app | src/components. Those were the second stage that slowed prime with no
+payoff – the snapshot + state file already carry the context.
+
+## Report (3 lines, +1 if on a launch plan) then STOP and wait for the task
 ```
-
-Print the output inline — no Read call, no full-file load. Only the most-recent deploy entry is consumed.
-
-**C. Neither present** → print `Previous session: no snapshot — fresh start.` and move on.
-
-## 3) MCP check (non-blocking)
-
-Glob for `.mcp.json`. If found, note "MCP configured." Do NOT verify MCP servers at prime time.
-
-## 4) Obsidian project-note metadata (non-blocking)
-
-`$NOTE` was resolved in §2A. If non-empty → Read that project note for frontmatter + "Related projects" + "Skills" sections only (skip "Vault knowledge" and "Notes").
-
-**Append to prime report** one "Obsidian" block:
+State: <branch> @ <hash> · <N> uncommitted · stack: <from ls>
+Last session: <1-2 lines – what shipped + what is next, from snapshot/STATE>
+Plan: <done>/<total> P-steps · next: <P-id + title> · <k> external (N) pending   [only if LAUNCH-PLAN.md]
+Ready – <next P-step prompt is queued> / <what do you want to work on? if no plan>
 ```
-Obsidian: [slug] · status=[active|archived|paused] · last_synced=[date]
-Related: [[note1]], [[note2]]
-Skills: React, Supabase, Vite, ...
-```
-
-If `$NOTE` empty → print `Obsidian: no matching note for $(pwd) — skip.`
-
-**Do NOT**: write to the vault, trigger MCP calls, tail the global activity-log, or block the prime report on vault I/O. If grep/read errors, continue silently.
-
-## 5) Session template
-
-Output once after prime, then proceed to work:
-```
-Goal: (1 sentence)
-Plan: (3-7 steps)
-Lock: (files not to touch)
-Change: (files to edit)
-Next: (first action)
-```
+No Goal/Plan/Lock template at prime time – that is per-task, after you have the task.
 
 ## Rules (always active)
-- Ask only truly blocking questions; otherwise state assumptions
-- LOCK & PATCH: change only what's required
-- Include: exact file paths, patches, commands
-- Handle states: loading / empty / error / success
-- HARD NO: no new deps, no global tooling changes, no rewrites unless asked
-
-## Team orchestration
-- Agent teams use the **official Agent Teams** mechanism (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`)
-- Display mode controlled by `teammateMode` in settings.json: `"tmux"` for split panes, `"in-process"` for single terminal, `"auto"` (default) auto-detects
-- Launch with `./scripts/start.sh` (tmux: Claude left pane + git watch right pane)
-- Agents are defined in `.claude/agents/*.md`: lead, frontend, backend, devops, skeptic, qa, researcher
-- When `/build-with-agent-team` is invoked, Lead uses `TeamCreate` + `TaskCreate` + `Agent` tool to create the team and delegate
-- Teammates spawn as split panes automatically in tmux — no manual pane management
-- Navigation: Shift+Down cycles teammates (in-process), click pane (split-pane), Alt+Arrow to navigate panes
-- Unknown agent names: infer role from task context → create `.claude/agents/<name>.md`, or ask user if unclear
-
-## Iteration close
-What changed · How to verify · Next action
-
-## Session close
-Done · Remaining · Next step · Risks
+- Ship the smallest correct change; LOCK & PATCH; give exact paths/patches/commands.
+- Ask only truly blocking questions; otherwise state assumptions and proceed.
+- No new deps / no global tooling changes / no rewrites unless asked.
+- Model routing v2: subagents doing code work spawn with `model: "fable"`; pure template-fill text may use `model: "opus"`. When torn -> fable.

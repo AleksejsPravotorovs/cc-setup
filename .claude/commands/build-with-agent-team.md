@@ -5,7 +5,7 @@
 - Teammates MUST NOT use `Write`/`Edit` on paths under `.claude/**` or `.git/**` - use `Bash` heredoc
 - Teammate artifacts live at repo root (`findings.md`, `research/`, `strategies/`, `qa/`, `web/`) - NOT `.claude/`
 - Teammates NEVER ask the user questions - pre-authorized blanket permission
-- Every `Agent(...)` spawn MUST pass `model: "fable"` (fleet model policy - never a dated id)
+- Model routing v2: every `Agent(...)` spawn passes an alias explicitly - `model: "fable"` for anything that ships as code (builders, reviewers, debuggers); `model: "opus"` ONLY for pure template-fill text (snapshot text, copy decks from a fixed template). When torn -> fable. Never a dated id.
 
 ## Phase -1: TRIAGE - size the engine to the job (run this FIRST, always)
 
@@ -50,7 +50,7 @@ feature requests and updates do NOT need it. Classify before spawning anything:
 
 ## Agent roster
 
-Agent definitions live in `.claude/agents/*.md` (all `model: fable` frontmatter):
+Agent definitions live in `.claude/agents/*.md`. Every roster agent is a senior-to-master-level expert whose .md embeds an "Expert toolkit" command-routing table (frontend: emil design-eng skills + `/impeccable <command> <target>` + Higgsfield CLI; backend/devops: Supabase/Vercel/Redis/Sentry CLIs) - trust those tables, run the proper commands. Frontmatter: coding roster `model: fable`; template agents may be `model: opus` (routing v2):
 - **lead** - contract owner + orchestrator (you, L-mode only)
 - **frontend** - UI + client logic
 - **backend** - API + database + server logic
@@ -84,7 +84,7 @@ ignored - do not pass it or wait on team setup.
    suggest 5-6 per teammate; we deliberately run fewer/bigger to cut claim/report overhead.)
 2. **`Agent`** tool - spawn BUILDERS ONLY first, all in one message, each with:
    - `name` (e.g. "frontend", "backend") - predictable names for later SendMessage
-   - `model: "fable"`, `mode: "bypassPermissions"`, `run_in_background: true`
+   - model per routing v2: `model: "fable"` for code work (the default); `"opus"` only for pure template-fill. Plus `mode: "bypassPermissions"`, `run_in_background: true`
    - `prompt`: CONTEXT PACK + their contract slice + BLANKET PERMISSION block
      (teammates auto-load CLAUDE.md/skills/MCP but NOT the lead's conversation history)
 3. Spawn reviewer(s) when the first implementation task completes, not before
