@@ -131,6 +131,11 @@ respawning fresh reviewers each cycle; fix cycles for LOW findings.
    `scripts/stop.sh` is the hard fallback; the task-list dir under `~/.claude/tasks/`
    persists by design for resumed sessions.
 5. Update `findings.md` (repo root) with resolved items.
+6. This applies to BACKGROUND SUBAGENTS spawned via `Agent(...)` in S/M mode too:
+   named background builders/reviewers idle after reporting and stay resident.
+   Once their deliverable is verified (and the fix cycle is over), send
+   `SendMessage {type: "shutdown_request"}`, wait for the approval, and confirm
+   termination. Never end a session with finished agents still idling.
 
 ## Findings automation
 - **Skeptic/reviewer** updates `findings.md` (repo root) after every review: new findings
