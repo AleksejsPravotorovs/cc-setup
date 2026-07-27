@@ -65,3 +65,50 @@ Skipped — no package.json (template/config repo).
 ### What was NOT touched
 - All `.sh` scripts (setup.sh / start.sh / stop.sh) - the bug is PowerShell-specific.
 - Agent roster, skills, guardrails kit, model routing.
+
+---
+
+## 2026-07-27 (2) – Regression fix: scriptblock scoping + pp never dead-ends
+
+**HEAD:** `c9a4451` on `main`
+**Live:** https://raw.githubusercontent.com/AleksejsPravotorovs/cc-setup/main/install.ps1
+
+### Root cause (regression from 76a301d)
+WSL helpers built `{ wsl -u root bash -c $Command }` and passed it to
+Get-NativeOutput -> Invoke-Native, both of which declare their OWN `$Command`
+parameter. PowerShell resolves a scriptblock's variables against the RUNTIME scope
+chain at invocation, so `$Command` bound to the helper's parameter (the scriptblock
+itself) and wsl.exe got its serialized source:
+`bash: line 0: bash: IAB3AHMAbAAg...: invalid option name`
+(base64/UTF-16LE = " wsl -u root bash -c $Command ").
+
+### Shipped
+- WSL calls now take `[string[]]$WslArgv` splatted directly to wsl.exe. No scriptblock
+  => no deferred variable resolution => nothing to shadow. Remaining scriptblock
+  helpers use `$NativeCall`, a name no caller body references.
+- start.ps1: every `exit 1` -> `Start-NativeClaude`. Runs Claude natively on Windows
+  with in-process teammates; writes teammateMode "in-process" to PROJECT settings
+  (they override user settings), creating the file when absent.
+- setup.ps1: writes the teammateMode the machine can honour (tmux only when tmux AND
+  Claude-in-WSL both verified), and corrects a stale "tmux".
+- apt: `;` not `&&`, so a DNS-dead `apt-get update` cannot block an install cached
+  lists still satisfy. tmux is probed BEFORE any apt call.
+- Test-AptNetworkFailure + Show-WSLNetworkHint: names WSL DNS as the real fault and
+  prints the exact 3-command fix.
+
+### Field evidence that drove this
+Colleague's WSL: DNS broken (`nameserver 172.28.112.1` unresolvable) BUT
+`tmux is already the newest version (3.6a-2)`. The probe only "failed" because it ran
+through the broken helper. Fixing the helper removes the apt dependency entirely.
+
+### Verification
+- Verified: `bash -n` on all 5 WSL here-string fragments -> OK.
+- Verified: emitted settings JSON parses for both teammateMode values.
+- Verified: commit-pinned raw fetch -> 0 `$Command` shadows, argv splat present,
+  5 Start-NativeClaude call sites, 1 remaining `exit 1` (no Claude installed at all).
+- EDITED-UNVERIFIED: PowerShell execution. No pwsh/powershell on the macOS dev host.
+
+### Open backlog
+- fix-profile.ps1 never audited for the native-stderr class.
+- setup.ps1 parses `wsl --list --quiet` (UTF-16LE) by accidental string match.
+- No CI parses the .ps1 files on push - this regression would have been caught by one.
