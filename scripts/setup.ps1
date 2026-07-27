@@ -390,7 +390,7 @@ grep -qF 'export LC_ALL=' ~/.profile 2>/dev/null || echo 'export LC_ALL=en_US.UT
         Fail "UTF-8 locale verification FAILED -- Cyrillic WILL NOT work"
         Warn "This MUST be fixed before using Claude with Cyrillic text"
         Info "Run manually:"
-        Write-Host "    wsl bash -c 'sudo apt-get install -y locales && sudo locale-gen en_US.UTF-8 ru_RU.UTF-8 && sudo update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8'" -ForegroundColor White
+        Write-Host "    wsl -u root bash -c 'apt-get install -y locales && locale-gen en_US.UTF-8 ru_RU.UTF-8 && update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8'" -ForegroundColor White
         Info "Then restart WSL: wsl --shutdown"
         return $false
     }
@@ -420,7 +420,7 @@ function Ensure-TmuxInWSL {
             return $false
         }
     } else {
-        Fail "tmux is required. Install manually: wsl bash -c 'sudo apt install tmux'"
+        Fail "tmux is required. Install manually: wsl -u root bash -c 'apt-get install -y tmux'"
         return $false
     }
 }
