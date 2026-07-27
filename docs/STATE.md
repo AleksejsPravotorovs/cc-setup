@@ -16,9 +16,11 @@ Repairing two root causes reported from a colleague's run on `F:\...\lincsite`:
 Plus `setup.ps1:461` called `Ensure-WSLLocale` without capturing its return value, printing
 a bare `False` to the console.
 
-Status: all four scripts edited (setup.ps1, start.ps1, update.ps1, install.ps1).
-NOT pushed — the colleague's `install.ps1` / `pp-update` fetch from GitHub main, so the
-fix only reaches them after an explicit push.
+Round 2 (same session): the round-1 fix regressed — see `## Failed attempts`. WSL calls
+now use argv arrays instead of scriptblocks, and `pp` degrades to native Windows Claude
+(teammateMode `in-process`) instead of dead-ending when WSL/tmux/apt are unusable.
+Field evidence: the colleague's WSL DNS is broken (`nameserver 172.28.112.1` unresolvable)
+but tmux 3.6a-2 was ALREADY installed — the probe only "failed" through the broken helper.
 
 ## Next
 Verify on Windows (no PowerShell runtime on the macOS dev host):
@@ -26,7 +28,8 @@ Verify on Windows (no PowerShell runtime on the macOS dev host):
 then re-run `.\scripts\setup.ps1`.
 
 ## Constraints
-(none recorded)
+- "fix this in a way so that everything works" — `pp` must never dead-end a user who
+  cannot reach apt; WSL/tmux is an enhancement, not a hard requirement.
 
 ## Open items
 - NOTED (not done): `setup.ps1:268` parses `wsl --list --quiet`, whose output is UTF-16LE;
@@ -35,4 +38,13 @@ then re-run `.\scripts\setup.ps1`.
   "Pre-flight passed" prints even after the WSL Claude install fails.
 
 ## Failed attempts
-(none)
+ATTEMPT 1 [L1]: commit 76a301d wrapped native calls in scriptblocks passed to
+`Invoke-Native`/`Get-NativeOutput`, whose parameters are ALSO named `$Command`.
+PowerShell resolves scriptblock variables against the runtime scope chain at
+invocation, so `{ wsl -u root bash -c $Command }` bound `$Command` to the helper's
+scriptblock parameter (itself), and wsl.exe got the serialized scriptblock source.
+-> observed: `bash: line 0: bash: IAB3AHMAbAAg...: invalid option name`
+   (base64/UTF-16LE decodes to " wsl -u root bash -c $Command ")
+Fix (this turn): WSL helpers take a `[string[]]` argv and splat it to `wsl.exe`
+directly -- no scriptblock, so no deferred variable resolution is possible. The
+remaining scriptblock helpers use `$NativeCall`, a name no caller body references.

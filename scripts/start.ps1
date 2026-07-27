@@ -24,13 +24,19 @@ $SessionName = (Split-Path -Leaf $WorkDir).ToLower() -replace '[.\s]', '-'
 # native command writes to stderr into a *terminating* NativeCommandError -- even a
 # harmless one (apt-get notices, node deprecation warnings). `2>$null` does NOT
 # prevent it. Every external command goes through these helpers instead.
+#
+# The scriptblock parameter is named $NativeCall, NOT $Command: a scriptblock's
+# variables resolve against the RUNTIME scope chain when it is invoked, not where it
+# was written. A helper parameter sharing a name with a variable inside the caller's
+# scriptblock silently shadows it -- that is how `{ wsl bash -c $Command }` ended up
+# handing its own serialized source to wsl.exe. Keep this name unique.
 
 function Invoke-Native {
-    param([Parameter(Mandatory = $true)][scriptblock]$Command)
+    param([Parameter(Mandatory = $true)][scriptblock]$NativeCall)
     $prev = $script:ErrorActionPreference
     $script:ErrorActionPreference = "Continue"
     try {
-        & $Command 2>&1 | ForEach-Object { "$_" }
+        & $NativeCall 2>&1 | ForEach-Object { "$_" }
     } finally {
         $script:ErrorActionPreference = $prev
     }
@@ -38,74 +44,150 @@ function Invoke-Native {
 
 # For commands that must keep the console (prompts, tmux) -- no redirection.
 function Invoke-NativeInteractive {
-    param([Parameter(Mandatory = $true)][scriptblock]$Command)
+    param([Parameter(Mandatory = $true)][scriptblock]$NativeCall)
     $prev = $script:ErrorActionPreference
     $script:ErrorActionPreference = "Continue"
-    try { & $Command } finally { $script:ErrorActionPreference = $prev }
+    try { & $NativeCall } finally { $script:ErrorActionPreference = $prev }
 }
 
-function Get-NativeOutput {
-    param([Parameter(Mandatory = $true)][scriptblock]$Command)
+# WSL calls take an ARGUMENT ARRAY, never a scriptblock: the args are evaluated here
+# and splatted straight to wsl.exe, so no deferred variable resolution can be shadowed.
+function Invoke-WslCapture {
+    param([Parameter(Mandatory = $true)][string[]]$WslArgv)
+    $prev = $script:ErrorActionPreference
+    $script:ErrorActionPreference = "Continue"
     try {
-        $lines = Invoke-Native $Command
+        $lines = & wsl.exe @WslArgv 2>&1 | ForEach-Object { "$_" }
         if ($null -eq $lines) { return "" }
         return (($lines -join "`n").Trim())
     } catch {
         return ""
+    } finally {
+        $script:ErrorActionPreference = $prev
     }
 }
 
 # Default user, non-login shell -- exact output for probes.
 function Invoke-WSL {
-    param([Parameter(Mandatory = $true)][string]$Command)
-    return (Get-NativeOutput { wsl bash -c $Command })
+    param([Parameter(Mandatory = $true)][string]$Script)
+    return (Invoke-WslCapture @("bash", "-c", $Script))
 }
 
 # Default user, login shell -- use where PATH must be complete (npm global bin).
 function Invoke-WSLLogin {
-    param([Parameter(Mandatory = $true)][string]$Command)
-    return (Get-NativeOutput { wsl bash -lc $Command })
+    param([Parameter(Mandatory = $true)][string]$Script)
+    return (Invoke-WslCapture @("bash", "-lc", $Script))
 }
 
 # Root, for provisioning. `sudo` inside `wsl bash -c` blocks on a password prompt
 # this script cannot answer, so apt-get / locale-gen / npm never actually ran.
 function Invoke-WSLRoot {
-    param([Parameter(Mandatory = $true)][string]$Command)
-    return (Get-NativeOutput { wsl -u root bash -c $Command })
+    param([Parameter(Mandatory = $true)][string]$Script)
+    return (Invoke-WslCapture @("-u", "root", "bash", "-c", $Script))
 }
 
-# --- Pre-flight: WSL with a distro --------------------------------
+function Test-AptNetworkFailure {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$AptOutput)
+    return ($AptOutput -match "Temporary failure resolving|Could not resolve|Failed to fetch")
+}
 
-# Check WSL has a working distro
-$distroCheck = Get-NativeOutput { wsl echo "ok" }
+function Show-WSLNetworkHint {
+    Write-Host "[!!] WSL cannot reach the Ubuntu archives -- a WSL DNS problem, not a missing package." -ForegroundColor Yellow
+    Write-Host "     Fix DNS inside WSL, then re-run 'pp'. Run these three, in order:" -ForegroundColor Cyan
+    # Here-string: every character is literal, so the quoting the user must retype is
+    # exactly what they see. Do not rewrite these as interpolated strings.
+    $hint = @'
+     wsl -u root bash -c "printf '[network]\ngenerateResolvConf=false\n' > /etc/wsl.conf"
+     wsl --shutdown
+     wsl -u root bash -c "printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf"
+'@
+    foreach ($line in ($hint -split "`n")) { Write-Host $line.TrimEnd() -ForegroundColor White }
+}
+
+# --- Fallback: run Claude natively on Windows ---------------------
+# tmux only buys split panes. Claude Code runs natively on Windows with in-process
+# teammates (Shift+Down to cycle), so a broken WSL must never block the session.
+
+function Start-NativeClaude {
+    param([Parameter(Mandatory = $true)][string]$Reason)
+
+    Write-Host ""
+    Write-Host "[i] $Reason" -ForegroundColor Yellow
+    Write-Host "[i] Falling back to native Windows mode -- teammates run in-process." -ForegroundColor Cyan
+    Write-Host "    Shift+Down cycles teammates, Ctrl+T shows the task list." -ForegroundColor White
+    Write-Host ""
+
+    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+        Write-Host "[X] Claude CLI is not installed on Windows either." -ForegroundColor Red
+        Write-Host "    Install: npm install -g @anthropic-ai/claude-code" -ForegroundColor White
+        Write-Host "    Or re-run: .\scripts\setup.ps1" -ForegroundColor White
+        exit 1
+    }
+
+    # Split panes need tmux; without it, teammateMode must be in-process or teammates
+    # have nowhere to appear. Project settings override user settings, so writing the
+    # project file is enough -- and it must EXIST, or a user-level "tmux" still wins.
+    $settingsDir  = Join-Path $WorkDir ".claude"
+    $settingsPath = Join-Path $settingsDir "settings.json"
+    if (Test-Path $settingsPath) {
+        $settingsText = [System.IO.File]::ReadAllText($settingsPath)
+        if ($settingsText -match '"teammateMode"\s*:\s*"tmux"') {
+            $patched = $settingsText -replace '"teammateMode"\s*:\s*"tmux"', '"teammateMode": "in-process"'
+            [System.IO.File]::WriteAllText($settingsPath, $patched, (New-Object System.Text.UTF8Encoding($false)))
+            Write-Host "[i] Set teammateMode to 'in-process' in .claude\settings.json (was 'tmux')." -ForegroundColor Cyan
+        }
+    } else {
+        if (-not (Test-Path $settingsDir)) { New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null }
+        $minimal = @'
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "teammateMode": "in-process"
+}
+'@
+        [System.IO.File]::WriteAllText($settingsPath, $minimal, (New-Object System.Text.UTF8Encoding($false)))
+        Write-Host "[i] Created .claude\settings.json with teammateMode 'in-process'." -ForegroundColor Cyan
+    }
+
+    $env:CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"
+    Invoke-NativeInteractive { claude }
+    exit $LASTEXITCODE
+}
+
+# --- Pre-flight: WSL, tmux, Claude-in-WSL (all optional) ----------
+# Each probe can only downgrade to the native fallback -- never dead-end.
+
+$distroCheck = Invoke-WslCapture @("echo", "ok")
 
 if ($distroCheck -ne "ok") {
-    Write-Host "[!!] WSL has no Linux distribution installed" -ForegroundColor Yellow
+    Write-Host "[!!] WSL has no working Linux distribution" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "    Installing Ubuntu (this takes a few minutes)..." -ForegroundColor Cyan
-    Write-Host "    You will be asked to create a Unix username and password." -ForegroundColor Cyan
-    Write-Host ""
-
-    # Install Ubuntu -- this is interactive (user creates username/password),
-    # so it runs unredirected; only the error preference is relaxed.
-    Invoke-NativeInteractive { wsl --install -d Ubuntu }
-
-    Write-Host ""
-    Write-Host "[i] Ubuntu installed. Re-run 'pp' or '.\scripts\start.ps1' to continue." -ForegroundColor Cyan
-    exit 0
+    $installWsl = Read-Host "    Install Ubuntu now? Takes a few minutes; you'll create a Unix user (y/n)"
+    if ($installWsl -eq "y") {
+        Write-Host ""
+        # Interactive (user creates username/password): unredirected on purpose.
+        Invoke-NativeInteractive { wsl --install -d Ubuntu }
+        Write-Host ""
+        Write-Host "[i] Ubuntu installed. Re-run 'pp' to use split-pane mode." -ForegroundColor Cyan
+        exit 0
+    }
+    Start-NativeClaude "WSL has no working distro."
 }
 
-# --- Pre-flight: tmux in WSL -------------------------------------
-
+# tmux: probe FIRST and only install when genuinely missing. A machine with tmux
+# already present must never be blocked by an unreachable apt mirror.
 $tmuxCheck = Invoke-WSLLogin "command -v tmux"
 if ($tmuxCheck -notmatch "tmux") {
-    Write-Host "[i] Installing tmux in WSL..." -ForegroundColor Cyan
-    Invoke-WSLRoot "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y tmux" | Out-Host
+    Write-Host "[i] tmux not found in WSL -- installing..." -ForegroundColor Cyan
+    # `;` not `&&`: a failing `apt-get update` (no DNS) must not block an install
+    # that cached package lists can still satisfy.
+    $aptOut = Invoke-WSLRoot "export DEBIAN_FRONTEND=noninteractive; apt-get update; apt-get install -y tmux"
+    $aptOut | Out-Host
     $tmuxCheck = Invoke-WSLLogin "command -v tmux"
     if ($tmuxCheck -notmatch "tmux") {
-        Write-Host "[X] tmux installation failed in WSL" -ForegroundColor Red
-        Write-Host "    Try manually: wsl -u root bash -c 'apt-get update && apt-get install -y tmux'" -ForegroundColor White
-        exit 1
+        if (Test-AptNetworkFailure $aptOut) { Show-WSLNetworkHint }
+        Start-NativeClaude "tmux could not be installed in WSL."
     }
 }
 
@@ -119,16 +201,16 @@ if ($localeCheck -notmatch "UTF-8") {
     # Single quotes only -- embedded double quotes do not survive PowerShell's
     # native-argument quoting on the way to wsl.exe.
     $localeScript = @'
-set -e
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
+apt-get update
 apt-get install -y locales
 sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 sed -i 's/^# *ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen en_US.UTF-8 ru_RU.UTF-8
 update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 '@
-    Invoke-WSLRoot $localeScript | Out-Host
+    $localeOut = Invoke-WSLRoot $localeScript
+    $localeOut | Out-Host
 
     # Verify instead of announcing success unconditionally.
     $charmap = Invoke-WSL "LANG=en_US.UTF-8 locale charmap 2>/dev/null"
@@ -136,8 +218,7 @@ update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
         Write-Host "[OK] UTF-8 locale installed (Cyrillic supported)" -ForegroundColor Green
     } else {
         Write-Host "[!!] UTF-8 locale still not active -- Cyrillic text may break" -ForegroundColor Yellow
-        Write-Host "    Fix: wsl -u root bash -c 'apt-get install -y locales && locale-gen en_US.UTF-8 ru_RU.UTF-8'" -ForegroundColor White
-        Write-Host "    Then: wsl --shutdown" -ForegroundColor White
+        if (Test-AptNetworkFailure $localeOut) { Show-WSLNetworkHint }
     }
 }
 
@@ -154,12 +235,14 @@ if ($claudeVer -notmatch "\d+\.\d+") {
         $nodeScript = @'
 set -e
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
+apt-get update
 apt-get install -y curl ca-certificates gnupg
 curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
 apt-get install -y nodejs
 '@
-        Invoke-WSLRoot $nodeScript | Out-Host
+        $nodeOut = Invoke-WSLRoot $nodeScript
+        $nodeOut | Out-Host
+        if (Test-AptNetworkFailure $nodeOut) { Show-WSLNetworkHint }
     }
 
     Invoke-WSLRoot "npm install -g @anthropic-ai/claude-code" | Out-Host
@@ -167,9 +250,7 @@ apt-get install -y nodejs
     # Verify it actually runs
     $claudeVer = Invoke-WSLLogin "claude --version 2>/dev/null | head -1"
     if ($claudeVer -notmatch "\d+\.\d+") {
-        Write-Host "[X] Claude CLI installation failed in WSL" -ForegroundColor Red
-        Write-Host "    Try manually: wsl -u root bash -c 'npm install -g @anthropic-ai/claude-code'" -ForegroundColor White
-        exit 1
+        Start-NativeClaude "Claude CLI could not be installed inside WSL."
     }
 }
 Write-Host "[OK] Claude CLI in WSL: $claudeVer" -ForegroundColor Green
@@ -221,8 +302,7 @@ Write-Host ""
 $pathCheck = Invoke-WSL "test -d '$wslPath' && echo ok"
 if ($pathCheck -ne "ok") {
     Write-Host "[X] WSL cannot access project path: $wslPath" -ForegroundColor Red
-    Write-Host "    Make sure your project is on a Windows drive (C:, D:, etc.)" -ForegroundColor White
-    exit 1
+    Start-NativeClaude "WSL cannot reach this project path (is it on a Windows drive?)."
 }
 
 # Launch tmux -- if claude crashes, keep the pane open to show the error

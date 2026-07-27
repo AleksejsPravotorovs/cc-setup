@@ -25,11 +25,14 @@ function Fail($msg) { Write-Host "  [XX] $msg" -ForegroundColor Red }
 # prints its progress to stderr, so a SUCCESSFUL pull used to be reported as failed.
 # Native commands run through this helper; the exit code lands in $LASTEXITCODE.
 
+# Parameter named $NativeCall, NOT $Command: a scriptblock's variables resolve against
+# the RUNTIME scope chain at invocation, so a helper parameter sharing a name with a
+# variable inside the caller's scriptblock would silently shadow it.
 function Invoke-NativeInteractive {
-    param([Parameter(Mandatory = $true)][scriptblock]$Command)
+    param([Parameter(Mandatory = $true)][scriptblock]$NativeCall)
     $prev = $script:ErrorActionPreference
     $script:ErrorActionPreference = "Continue"
-    try { & $Command } finally { $script:ErrorActionPreference = $prev }
+    try { & $NativeCall } finally { $script:ErrorActionPreference = $prev }
 }
 
 # Detect mode

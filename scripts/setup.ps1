@@ -27,12 +27,18 @@ function Fail($msg) { Write-Host "  [XX] $msg" -ForegroundColor Red }
 # preference for the duration of the call and turn stderr into plain text.
 # Exit status stays in $LASTEXITCODE for the caller to check.
 
+# The parameter is named $NativeCall, NOT $Command: a scriptblock's variables are
+# resolved against the RUNTIME scope chain when it is invoked, not captured where it
+# was written. A helper parameter sharing a name with a variable inside the caller's
+# scriptblock silently shadows it -- that is how `{ wsl bash -c $Command }` ended up
+# passing its own serialized source to wsl.exe. Keep this name unique.
+
 function Invoke-Native {
-    param([Parameter(Mandatory = $true)][scriptblock]$Command)
+    param([Parameter(Mandatory = $true)][scriptblock]$NativeCall)
     $prev = $script:ErrorActionPreference
     $script:ErrorActionPreference = "Continue"
     try {
-        & $Command 2>&1 | ForEach-Object { "$_" }
+        & $NativeCall 2>&1 | ForEach-Object { "$_" }
     } finally {
         $script:ErrorActionPreference = $prev
     }
@@ -40,9 +46,9 @@ function Invoke-Native {
 
 # Same, but returns the combined output as one trimmed string and never throws.
 function Get-NativeOutput {
-    param([Parameter(Mandatory = $true)][scriptblock]$Command)
+    param([Parameter(Mandatory = $true)][scriptblock]$NativeCall)
     try {
-        $lines = Invoke-Native $Command
+        $lines = Invoke-Native $NativeCall
         if ($null -eq $lines) { return "" }
         return (($lines -join "`n").Trim())
     } catch {
@@ -50,25 +56,66 @@ function Get-NativeOutput {
     }
 }
 
-# Provision WSL as root. `sudo` inside `wsl bash -c` blocks on a password prompt
-# that setup cannot answer, so apt-get / locale-gen / npm never actually ran.
+# --- WSL execution ------------------------------------------------
+# WSL calls take an ARGUMENT ARRAY, never a scriptblock: the args are evaluated here
+# and splatted straight to wsl.exe, so there is no deferred variable resolution to
+# get shadowed. Returns combined output as one trimmed string; never throws.
+
+function Invoke-WslCapture {
+    param([Parameter(Mandatory = $true)][string[]]$WslArgv)
+    $prev = $script:ErrorActionPreference
+    $script:ErrorActionPreference = "Continue"
+    try {
+        $lines = & wsl.exe @WslArgv 2>&1 | ForEach-Object { "$_" }
+        if ($null -eq $lines) { return "" }
+        return (($lines -join "`n").Trim())
+    } catch {
+        return ""
+    } finally {
+        $script:ErrorActionPreference = $prev
+    }
+}
+
+# Provision as root. `sudo` inside `wsl bash -c` blocks on a password prompt that
+# setup cannot answer, so apt-get / locale-gen / npm never actually ran.
 function Invoke-WSLRoot {
     param([Parameter(Mandatory = $true)][string]$Script)
-    return (Get-NativeOutput { wsl -u root bash -c $Script })
+    return (Invoke-WslCapture @("-u", "root", "bash", "-c", $Script))
 }
 
-# Run as the default WSL user in a NON-login shell: profile files stay unsourced, so
-# the output is exactly what the command printed (used for exact-match probes).
+# Default user, NON-login shell: profile files stay unsourced, so the output is
+# exactly what the command printed (used for exact-match probes).
 function Invoke-WSLUser {
     param([Parameter(Mandatory = $true)][string]$Script)
-    return (Get-NativeOutput { wsl bash -c $Script })
+    return (Invoke-WslCapture @("bash", "-c", $Script))
 }
 
-# Same user, but a LOGIN shell -- needed only where PATH must be complete
+# Default user, LOGIN shell -- needed only where PATH must be complete
 # (npm's global bin lands on PATH via the profile files).
 function Invoke-WSLLogin {
     param([Parameter(Mandatory = $true)][string]$Script)
-    return (Get-NativeOutput { wsl bash -lc $Script })
+    return (Invoke-WslCapture @("bash", "-lc", $Script))
+}
+
+# True when apt could not reach the archives (the common WSL DNS failure). Callers
+# use this to explain the real problem instead of blaming the package.
+function Test-AptNetworkFailure {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$AptOutput)
+    return ($AptOutput -match "Temporary failure resolving|Could not resolve|Failed to fetch")
+}
+
+function Show-WSLNetworkHint {
+    Warn "WSL cannot reach the Ubuntu archives -- this is a WSL DNS problem, not a missing package."
+    Info "Fix DNS inside WSL, then retry. Run these three, in order:"
+    # Here-string: every character is literal, so the quoting the user must retype
+    # is exactly what they see. Do not rewrite these as interpolated strings.
+    $hint = @'
+    wsl -u root bash -c "printf '[network]\ngenerateResolvConf=false\n' > /etc/wsl.conf"
+    wsl --shutdown
+    wsl -u root bash -c "printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf"
+'@
+    foreach ($line in ($hint -split "`n")) { Write-Host $line.TrimEnd() -ForegroundColor White }
+    Info "Corporate VPN? The VPN's DNS must be reachable from WSL, or use the static file above."
 }
 
 $ExpectedAgents   = @("lead", "frontend", "backend", "devops", "skeptic", "qa", "researcher")
@@ -285,7 +332,7 @@ function Ensure-WSL {
     # wsl.exe exists as a stub on Windows even when WSL isn't installed,
     # so we can't trust Get-Command. Try running it and check the result.
     $wslInstalled = $false
-    $wslStatus = Get-NativeOutput { wsl --status }
+    $wslStatus = Invoke-WslCapture @("--status")
     # If --status succeeds without "not installed" message, WSL is enabled
     if ($wslStatus -and $wslStatus -notmatch "not installed" -and $wslStatus -notmatch "is not") {
         $wslInstalled = $true
@@ -313,7 +360,7 @@ function Ensure-WSL {
 
     # Check a distro is actually installed
     $hasDistro = $false
-    $distros = Get-NativeOutput { wsl --list --quiet }
+    $distros = Invoke-WslCapture @("--list", "--quiet")
     if ($distros -and $distros -notmatch "not installed" -and $distros -notmatch "is not") {
         $hasDistro = $true
     }
@@ -364,7 +411,8 @@ sed -i 's/^# *ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen en_US.UTF-8 ru_RU.UTF-8
 update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 '@
-    Invoke-WSLRoot $localeScript | Out-Host
+    $localeOut = Invoke-WSLRoot $localeScript
+    $localeOut | Out-Host
 
     # Persist the vars in the DEFAULT USER's dotfiles -- as root, ~ is /root, so this
     # part must run unprivileged or tmux sessions would start without the locale.
@@ -389,6 +437,7 @@ grep -qF 'export LC_ALL=' ~/.profile 2>/dev/null || echo 'export LC_ALL=en_US.UT
     } else {
         Fail "UTF-8 locale verification FAILED -- Cyrillic WILL NOT work"
         Warn "This MUST be fixed before using Claude with Cyrillic text"
+        if (Test-AptNetworkFailure $localeOut) { Show-WSLNetworkHint }
         Info "Run manually:"
         Write-Host "    wsl -u root bash -c 'apt-get install -y locales && locale-gen en_US.UTF-8 ru_RU.UTF-8 && update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8'" -ForegroundColor White
         Info "Then restart WSL: wsl --shutdown"
@@ -410,13 +459,15 @@ function Ensure-TmuxInWSL {
     if ($install -eq "y") {
         Info "Installing tmux in WSL..."
         # As root -- `sudo` would block on an unanswerable password prompt.
-        Invoke-WSLRoot "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y tmux" | Out-Host
+        $aptOut = Invoke-WSLRoot "export DEBIAN_FRONTEND=noninteractive; apt-get update; apt-get install -y tmux"
+        $aptOut | Out-Host
         $tmuxCheck = Invoke-WSLLogin "command -v tmux"
         if ($tmuxCheck -match "tmux") {
             Log "tmux installed in WSL"
             return $true
         } else {
             Fail "tmux installation failed"
+            if (Test-AptNetworkFailure $aptOut) { Show-WSLNetworkHint }
             return $false
         }
     } else {
@@ -455,11 +506,13 @@ apt-get install -y curl ca-certificates gnupg
 curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
 apt-get install -y nodejs
 '@
-        Invoke-WSLRoot $nodeScript | Out-Host
+        $nodeOut = Invoke-WSLRoot $nodeScript
+        $nodeOut | Out-Host
 
         $nodeCheck = Invoke-WSLLogin "command -v node"
         if ($nodeCheck -notmatch "node") {
             Fail "Node.js installation failed in WSL -- Claude CLI cannot be installed"
+            if (Test-AptNetworkFailure $nodeOut) { Show-WSLNetworkHint }
             Info "Try manually: wsl -u root bash -c 'apt-get update && apt-get install -y nodejs npm'"
             return $false
         }
@@ -547,6 +600,18 @@ if ($tmuxOk -and $localeOk -and $claudeWslOk) {
     if (-not $claudeWslOk) { Write-Host "    - Claude CLI in WSL"    -ForegroundColor White }
     Info "Config below still installs; split-pane agent teams need the items above."
 }
+
+# Write the teammateMode that this machine can actually honour. tmux gives one pane
+# per teammate but needs WSL + tmux + Claude-in-WSL; in-process is Claude Code's own
+# default and needs none of it (Shift+Down cycles teammates). Claiming "tmux" on a
+# machine without it leaves teammates with nowhere to appear.
+if ($tmuxOk -and $claudeWslOk) {
+    $TeammateMode = "tmux"
+    Info "teammateMode: tmux (split panes -- one pane per teammate)"
+} else {
+    $TeammateMode = "in-process"
+    Info "teammateMode: in-process (no WSL/tmux needed -- Shift+Down cycles teammates)"
+}
 Write-Host ""
 
 # --- User-level settings -----------------------------------------
@@ -559,8 +624,10 @@ if (-not (Test-Path $userSettingsDir)) { New-Item -ItemType Directory -Path $use
 if (Test-Path $userSettingsFile) {
     $content = Get-Content $userSettingsFile -Raw
     $needsUpdate = $false
-    if ($content -notmatch "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS") { $needsUpdate = $true }
-    if ($content -notmatch "teammateMode")                         { $needsUpdate = $true }
+    if ($content -notmatch "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS")   { $needsUpdate = $true }
+    if ($content -notmatch "teammateMode")                           { $needsUpdate = $true }
+    # Also correct a stale mode: "tmux" on a machine without tmux strands teammates.
+    if ($content -notmatch "`"teammateMode`"\s*:\s*`"$TeammateMode`"") { $needsUpdate = $true }
 
     if ($needsUpdate) {
         Info "Updating user settings for agent teams..."
@@ -568,26 +635,26 @@ if (Test-Path $userSettingsFile) {
             $settings = $content | ConvertFrom-Json
             if (-not $settings.env) { $settings | Add-Member -NotePropertyName "env" -NotePropertyValue ([PSCustomObject]@{}) }
             $settings.env | Add-Member -NotePropertyName "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" -NotePropertyValue "1" -Force
-            $settings | Add-Member -NotePropertyName "teammateMode" -NotePropertyValue "tmux" -Force
+            $settings | Add-Member -NotePropertyName "teammateMode" -NotePropertyValue $TeammateMode -Force
             $settings | ConvertTo-Json -Depth 10 | Set-Content $userSettingsFile -Encoding UTF8
-            Log "Updated $userSettingsFile"
+            Log "Updated $userSettingsFile (teammateMode: $TeammateMode)"
         } catch {
             Warn "Could not auto-update user settings. Add manually:"
             Write-Host '    env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"' -ForegroundColor White
-            Write-Host '    teammateMode = "tmux"' -ForegroundColor White
+            Write-Host "    teammateMode = ""$TeammateMode""" -ForegroundColor White
         }
     } else {
         Log "User settings: agent teams already configured"
     }
 } else {
-    $settingsJson = @'
+    $settingsJson = @"
 {
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
-  "teammateMode": "tmux"
+  "teammateMode": "$TeammateMode"
 }
-'@
+"@
     $settingsJson | Set-Content $userSettingsFile -Encoding UTF8
     Log "Created $userSettingsFile"
 }
@@ -599,17 +666,18 @@ if (-not (Test-Path ".claude")) { New-Item -ItemType Directory -Path ".claude" -
 if (Test-Path ".claude/settings.json") {
     $content = Get-Content ".claude/settings.json" -Raw
     $needsUpdate = $false
-    if ($content -notmatch "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS") { $needsUpdate = $true }
-    if ($content -notmatch "teammateMode")                         { $needsUpdate = $true }
+    if ($content -notmatch "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS")   { $needsUpdate = $true }
+    if ($content -notmatch "teammateMode")                           { $needsUpdate = $true }
+    if ($content -notmatch "`"teammateMode`"\s*:\s*`"$TeammateMode`"") { $needsUpdate = $true }
 
     if ($needsUpdate) {
         try {
             $settings = $content | ConvertFrom-Json
             if (-not $settings.env) { $settings | Add-Member -NotePropertyName "env" -NotePropertyValue ([PSCustomObject]@{}) }
             $settings.env | Add-Member -NotePropertyName "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" -NotePropertyValue "1" -Force
-            $settings | Add-Member -NotePropertyName "teammateMode" -NotePropertyValue "tmux" -Force
+            $settings | Add-Member -NotePropertyName "teammateMode" -NotePropertyValue $TeammateMode -Force
             $settings | ConvertTo-Json -Depth 10 | Set-Content ".claude/settings.json" -Encoding UTF8
-            Log "Updated .claude\settings.json"
+            Log "Updated .claude\settings.json (teammateMode: $TeammateMode)"
         } catch {
             Warn "Could not auto-update project settings"
         }
@@ -617,14 +685,14 @@ if (Test-Path ".claude/settings.json") {
         Log "Project settings already configured"
     }
 } else {
-    $projSettings = @'
+    $projSettings = @"
 {
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
-  "teammateMode": "tmux"
+  "teammateMode": "$TeammateMode"
 }
-'@
+"@
     $projSettings | Set-Content ".claude/settings.json" -Encoding UTF8
     Log "Created .claude\settings.json"
 }
