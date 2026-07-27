@@ -18,6 +18,59 @@ function Warn($msg) { Write-Host "  [!!] $msg" -ForegroundColor Yellow }
 function Info($msg) { Write-Host "  [ii] $msg" -ForegroundColor Cyan }
 function Fail($msg) { Write-Host "  [XX] $msg" -ForegroundColor Red }
 
+# --- Native command helpers ---------------------------------------
+# $ErrorActionPreference = "Stop" (above) makes PowerShell 5.1 promote ANY line a
+# native command writes to stderr into a *terminating* NativeCommandError -- even a
+# harmless one (node's DEP0169 warning from `code`, apt-get notices, git progress).
+# `2>$null` does NOT prevent it: the error record is created before the redirect.
+# Every external command therefore goes through these helpers, which relax the
+# preference for the duration of the call and turn stderr into plain text.
+# Exit status stays in $LASTEXITCODE for the caller to check.
+
+function Invoke-Native {
+    param([Parameter(Mandatory = $true)][scriptblock]$Command)
+    $prev = $script:ErrorActionPreference
+    $script:ErrorActionPreference = "Continue"
+    try {
+        & $Command 2>&1 | ForEach-Object { "$_" }
+    } finally {
+        $script:ErrorActionPreference = $prev
+    }
+}
+
+# Same, but returns the combined output as one trimmed string and never throws.
+function Get-NativeOutput {
+    param([Parameter(Mandatory = $true)][scriptblock]$Command)
+    try {
+        $lines = Invoke-Native $Command
+        if ($null -eq $lines) { return "" }
+        return (($lines -join "`n").Trim())
+    } catch {
+        return ""
+    }
+}
+
+# Provision WSL as root. `sudo` inside `wsl bash -c` blocks on a password prompt
+# that setup cannot answer, so apt-get / locale-gen / npm never actually ran.
+function Invoke-WSLRoot {
+    param([Parameter(Mandatory = $true)][string]$Script)
+    return (Get-NativeOutput { wsl -u root bash -c $Script })
+}
+
+# Run as the default WSL user in a NON-login shell: profile files stay unsourced, so
+# the output is exactly what the command printed (used for exact-match probes).
+function Invoke-WSLUser {
+    param([Parameter(Mandatory = $true)][string]$Script)
+    return (Get-NativeOutput { wsl bash -c $Script })
+}
+
+# Same user, but a LOGIN shell -- needed only where PATH must be complete
+# (npm's global bin lands on PATH via the profile files).
+function Invoke-WSLLogin {
+    param([Parameter(Mandatory = $true)][string]$Script)
+    return (Get-NativeOutput { wsl bash -lc $Script })
+}
+
 $ExpectedAgents   = @("lead", "frontend", "backend", "devops", "skeptic", "qa", "researcher")
 $ExpectedCommands = @("prime", "build-with-agent-team", "deploy", "research")
 $VscodeExtensions = @("dbaeumer.vscode-eslint", "bradlc.vscode-tailwindcss", "esbenp.prettier-vscode")
@@ -89,7 +142,7 @@ function Install-GitBash {
 
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         Info "Installing Git for Windows via winget..."
-        winget install Git.Git --accept-source-agreements --accept-package-agreements
+        Invoke-Native { winget install Git.Git --accept-source-agreements --accept-package-agreements } | Out-Host
         Refresh-Path
         if (Get-Command git -ErrorAction SilentlyContinue) {
             Log "Git for Windows installed"
@@ -99,7 +152,7 @@ function Install-GitBash {
 
     if (Get-Command choco -ErrorAction SilentlyContinue) {
         Info "Installing Git for Windows via Chocolatey..."
-        choco install git -y
+        Invoke-Native { choco install git -y } | Out-Host
         Refresh-Path
         if (Get-Command git -ErrorAction SilentlyContinue) {
             Log "Git for Windows installed"
@@ -129,7 +182,7 @@ function Install-NodeJS {
 
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         Info "Installing Node.js LTS via winget..."
-        winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+        Invoke-Native { winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements } | Out-Host
         Refresh-Path
         if (Get-Command node -ErrorAction SilentlyContinue) {
             Log "Node.js installed: $(node --version)"
@@ -139,7 +192,7 @@ function Install-NodeJS {
 
     if (Get-Command choco -ErrorAction SilentlyContinue) {
         Info "Installing Node.js LTS via Chocolatey..."
-        choco install nodejs-lts -y
+        Invoke-Native { choco install nodejs-lts -y } | Out-Host
         Refresh-Path
         if (Get-Command node -ErrorAction SilentlyContinue) {
             Log "Node.js installed: $(node --version)"
@@ -211,7 +264,7 @@ function Install-ClaudeCLI {
     }
 
     Info "Installing Claude CLI via npm..."
-    npm install -g @anthropic-ai/claude-code
+    Invoke-Native { npm install -g @anthropic-ai/claude-code } | Out-Host
     Refresh-Path
 
     if (Get-Command claude -ErrorAction SilentlyContinue) {
@@ -232,14 +285,10 @@ function Ensure-WSL {
     # wsl.exe exists as a stub on Windows even when WSL isn't installed,
     # so we can't trust Get-Command. Try running it and check the result.
     $wslInstalled = $false
-    try {
-        $wslStatus = wsl --status 2>&1 | Out-String
-        # If --status succeeds without "not installed" message, WSL is enabled
-        if ($wslStatus -notmatch "not installed" -and $wslStatus -notmatch "is not") {
-            $wslInstalled = $true
-        }
-    } catch {
-        $wslInstalled = $false
+    $wslStatus = Get-NativeOutput { wsl --status }
+    # If --status succeeds without "not installed" message, WSL is enabled
+    if ($wslStatus -and $wslStatus -notmatch "not installed" -and $wslStatus -notmatch "is not") {
+        $wslInstalled = $true
     }
 
     if (-not $wslInstalled) {
@@ -249,7 +298,7 @@ function Ensure-WSL {
         if ($install -eq "y") {
             Info "Installing WSL with Ubuntu (this may take a few minutes)..."
             # wsl --install enables WSL and installs Ubuntu by default
-            try { wsl --install 2>&1 | Out-Null } catch {}
+            Invoke-Native { wsl --install } | Out-Host
             Write-Host ""
             Warn "WSL installed. You MUST restart your computer before continuing."
             Info "After restart, re-run: .\scripts\setup.ps1"
@@ -264,12 +313,10 @@ function Ensure-WSL {
 
     # Check a distro is actually installed
     $hasDistro = $false
-    try {
-        $distros = (wsl --list --quiet 2>&1 | Out-String).Trim()
-        if ($distros -and $distros -notmatch "not installed" -and $distros -notmatch "is not") {
-            $hasDistro = $true
-        }
-    } catch {}
+    $distros = Get-NativeOutput { wsl --list --quiet }
+    if ($distros -and $distros -notmatch "not installed" -and $distros -notmatch "is not") {
+        $hasDistro = $true
+    }
 
     if (-not $hasDistro) {
         Warn "WSL is enabled but no Linux distribution found"
@@ -277,7 +324,7 @@ function Ensure-WSL {
         $install = Read-Host "    Install Ubuntu distro now? (y/n)"
         if ($install -eq "y") {
             Info "Installing Ubuntu..."
-            try { wsl --install -d Ubuntu 2>&1 | Out-Null } catch {}
+            Invoke-Native { wsl --install -d Ubuntu } | Out-Host
             Warn "Distro installed. You may need to restart your terminal."
             Info "After restart, re-run: .\scripts\setup.ps1"
             Read-Host "Press Enter to exit"
@@ -294,39 +341,44 @@ function Ensure-WSL {
 
 function Ensure-WSLLocale {
     # Check if locale is already UTF-8
-    $localeCheck = $null
-    try { $localeCheck = wsl bash -c "locale 2>/dev/null | head -1" 2>&1 | Out-String } catch {}
-    if ($localeCheck -and $localeCheck.Trim() -match "UTF-8") {
+    $localeCheck = Invoke-WSLUser "locale 2>/dev/null | head -1"
+    if ($localeCheck -match "UTF-8") {
         Log "WSL locale: UTF-8 configured (Cyrillic supported)"
         return $true
     }
 
     Warn "WSL locale is NOT set to UTF-8 -- Cyrillic characters will break in tmux"
     Info "Configuring UTF-8 locale in WSL (installs en_US.UTF-8 + ru_RU.UTF-8)..."
+
+    # Run as root (wsl -u root): `sudo` here would block on a password prompt that
+    # setup cannot answer, which is how this step used to fail silently.
+    # Only single quotes below -- embedded double quotes do not survive PowerShell's
+    # native-argument quoting on the way to wsl.exe.
     $localeScript = @'
 set -e
-sudo apt-get update -qq
-sudo apt-get install -y locales
-sudo sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
-sudo sed -i 's/# ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
-sudo locale-gen
-sudo update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
-# Ensure locale vars are set on every shell login
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y locales
+sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+sed -i 's/^# *ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
+locale-gen en_US.UTF-8 ru_RU.UTF-8
+update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+'@
+    Invoke-WSLRoot $localeScript | Out-Host
+
+    # Persist the vars in the DEFAULT USER's dotfiles -- as root, ~ is /root, so this
+    # part must run unprivileged or tmux sessions would start without the locale.
+    $profileScript = @'
 grep -qF 'export LANG=' ~/.bashrc 2>/dev/null || echo 'export LANG=en_US.UTF-8' >> ~/.bashrc
 grep -qF 'export LC_ALL=' ~/.bashrc 2>/dev/null || echo 'export LC_ALL=en_US.UTF-8' >> ~/.bashrc
-# Also set in .profile for non-interactive shells
 grep -qF 'export LANG=' ~/.profile 2>/dev/null || echo 'export LANG=en_US.UTF-8' >> ~/.profile
 grep -qF 'export LC_ALL=' ~/.profile 2>/dev/null || echo 'export LC_ALL=en_US.UTF-8' >> ~/.profile
 '@
-    try { wsl bash -c $localeScript } catch {
-        Fail "Locale installation failed: $_"
-    }
+    Invoke-WSLUser $profileScript | Out-Null
 
     # Verify the locale actually works
-    $charmap = ""
-    try { $charmap = (wsl bash -c "LANG=en_US.UTF-8 locale charmap 2>/dev/null" 2>&1 | Out-String).Trim() } catch {}
-    $testCyrillic = ""
-    try { $testCyrillic = (wsl bash -c "LANG=en_US.UTF-8 printf '\xd0\x9f\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82' 2>/dev/null" 2>&1 | Out-String).Trim() } catch {}
+    $charmap = Invoke-WSLUser "LANG=en_US.UTF-8 locale charmap 2>/dev/null"
+    $testCyrillic = Invoke-WSLUser "LANG=en_US.UTF-8 printf '\xd0\x9f\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82' 2>/dev/null"
 
     if ($charmap -eq "UTF-8") {
         Log "WSL locale configured: en_US.UTF-8 (Cyrillic supported)"
@@ -345,11 +397,9 @@ grep -qF 'export LC_ALL=' ~/.profile 2>/dev/null || echo 'export LC_ALL=en_US.UT
 }
 
 function Ensure-TmuxInWSL {
-    $tmuxCheck = $null
-    try { $tmuxCheck = wsl bash -c "command -v tmux" 2>&1 | Out-String } catch {}
-    if ($tmuxCheck -and $tmuxCheck.Trim() -match "tmux") {
-        $tmuxVer = ""
-        try { $tmuxVer = (wsl bash -c "tmux -V" 2>&1 | Out-String).Trim() } catch {}
+    $tmuxCheck = Invoke-WSLLogin "command -v tmux"
+    if ($tmuxCheck -match "tmux") {
+        $tmuxVer = Invoke-WSLUser "tmux -V"
         Log "tmux found in WSL: $tmuxVer"
         return $true
     }
@@ -359,9 +409,10 @@ function Ensure-TmuxInWSL {
     $install = Read-Host "    Install tmux in WSL now? (y/n)"
     if ($install -eq "y") {
         Info "Installing tmux in WSL..."
-        try { wsl bash -c "sudo apt-get update -qq && sudo apt-get install -y tmux" } catch {}
-        try { $tmuxCheck = wsl bash -c "command -v tmux" 2>&1 | Out-String } catch {}
-        if ($tmuxCheck -and $tmuxCheck.Trim() -match "tmux") {
+        # As root -- `sudo` would block on an unanswerable password prompt.
+        Invoke-WSLRoot "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y tmux" | Out-Host
+        $tmuxCheck = Invoke-WSLLogin "command -v tmux"
+        if ($tmuxCheck -match "tmux") {
             Log "tmux installed in WSL"
             return $true
         } else {
@@ -375,11 +426,9 @@ function Ensure-TmuxInWSL {
 }
 
 function Ensure-ClaudeInWSL {
-    $claudeCheck = $null
-    try { $claudeCheck = wsl bash -c "command -v claude" 2>&1 | Out-String } catch {}
-    if ($claudeCheck -and $claudeCheck.Trim() -match "claude") {
-        $claudeVer = ""
-        try { $claudeVer = (wsl bash -c "claude --version 2>/dev/null | head -1" 2>&1 | Out-String).Trim() } catch {}
+    $claudeCheck = Invoke-WSLLogin "command -v claude"
+    if ($claudeCheck -match "claude") {
+        $claudeVer = Invoke-WSLLogin "claude --version 2>/dev/null | head -1"
         Log "Claude CLI found in WSL: $claudeVer"
         return $true
     }
@@ -387,32 +436,54 @@ function Ensure-ClaudeInWSL {
     Warn "Claude CLI not found in WSL (required for tmux split-pane mode)"
     Write-Host ""
     $install = Read-Host "    Install Claude CLI in WSL now? (y/n)"
-    if ($install -eq "y") {
-        # Ensure Node.js is available in WSL
-        $nodeCheck = $null
-        try { $nodeCheck = wsl bash -c "command -v node" 2>&1 | Out-String } catch {}
-        if (-not $nodeCheck -or $nodeCheck.Trim() -notmatch "node") {
-            Info "Installing Node.js in WSL..."
-            try { wsl bash -c "curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs" } catch {}
-        }
-
-        Info "Installing Claude CLI in WSL (npm install -g)..."
-        try { wsl bash -c "sudo npm install -g @anthropic-ai/claude-code" } catch {}
-
-        try { $claudeCheck = wsl bash -c "command -v claude" 2>&1 | Out-String } catch {}
-        if ($claudeCheck -and $claudeCheck.Trim() -match "claude") {
-            Log "Claude CLI installed in WSL"
-            return $true
-        } else {
-            Fail "Claude CLI installation failed in WSL"
-            Info "Try manually: wsl bash -c 'npm install -g @anthropic-ai/claude-code'"
-            return $false
-        }
-    } else {
+    if ($install -ne "y") {
         Fail "Claude CLI in WSL is required for split-pane mode."
-        Info "Install manually: wsl bash -c 'npm install -g @anthropic-ai/claude-code'"
+        Info "Install manually: wsl -u root bash -c 'npm install -g @anthropic-ai/claude-code'"
         return $false
     }
+
+    # Everything below runs as root (wsl -u root). The previous version used `sudo`,
+    # which blocks on a password prompt setup cannot answer -- the install never ran.
+    $nodeCheck = Invoke-WSLLogin "command -v node"
+    if ($nodeCheck -notmatch "node") {
+        Info "Installing Node.js in WSL..."
+        $nodeScript = @'
+set -e
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y curl ca-certificates gnupg
+curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+apt-get install -y nodejs
+'@
+        Invoke-WSLRoot $nodeScript | Out-Host
+
+        $nodeCheck = Invoke-WSLLogin "command -v node"
+        if ($nodeCheck -notmatch "node") {
+            Fail "Node.js installation failed in WSL -- Claude CLI cannot be installed"
+            Info "Try manually: wsl -u root bash -c 'apt-get update && apt-get install -y nodejs npm'"
+            return $false
+        }
+    }
+
+    Info "Installing Claude CLI in WSL (npm install -g)..."
+    $npmOutput = Invoke-WSLRoot "npm install -g @anthropic-ai/claude-code"
+    $npmOutput | Out-Host
+
+    $claudeCheck = Invoke-WSLLogin "command -v claude"
+    if ($claudeCheck -match "claude") {
+        Log "Claude CLI installed in WSL"
+        return $true
+    }
+
+    Fail "Claude CLI installation failed in WSL"
+    if ($npmOutput) {
+        Info "npm said:"
+        foreach ($line in (($npmOutput -split "`n") | Select-Object -Last 5)) {
+            Write-Host "    $line" -ForegroundColor White
+        }
+    }
+    Info "Try manually: wsl -u root bash -c 'npm install -g @anthropic-ai/claude-code'"
+    return $false
 }
 
 # ===================================================================
@@ -457,14 +528,25 @@ if (-not $npmOk) {
 
 $wslOk = Ensure-WSL
 if ($wslOk) {
-    $tmuxOk = Ensure-TmuxInWSL
-    Ensure-WSLLocale
+    # Capture every return value -- an unassigned function call writes its result
+    # ("True"/"False") straight to the console.
+    $tmuxOk      = Ensure-TmuxInWSL
+    $localeOk    = Ensure-WSLLocale
     $claudeWslOk = Ensure-ClaudeInWSL
 } else {
     Warn "WSL not available -- agent teams will not have split-pane support"
+    $tmuxOk = $false; $localeOk = $false; $claudeWslOk = $false
 }
 
-Log "Pre-flight passed"
+if ($tmuxOk -and $localeOk -and $claudeWslOk) {
+    Log "Pre-flight passed"
+} else {
+    Warn "Pre-flight finished with unresolved items (see above):"
+    if (-not $tmuxOk)      { Write-Host "    - tmux in WSL"          -ForegroundColor White }
+    if (-not $localeOk)    { Write-Host "    - UTF-8 locale in WSL"  -ForegroundColor White }
+    if (-not $claudeWslOk) { Write-Host "    - Claude CLI in WSL"    -ForegroundColor White }
+    Info "Config below still installs; split-pane agent teams need the items above."
+}
 Write-Host ""
 
 # --- User-level settings -----------------------------------------
@@ -592,7 +674,7 @@ if (Test-Path "package.json") {
         Log "Project dependencies installed (node_modules)"
     } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
         Info "Installing project dependencies (npm install)..."
-        npm install
+        Invoke-Native { npm install } | Out-Host
         if (Test-Path "node_modules") {
             Log "Project dependencies installed"
         } else {
@@ -620,9 +702,15 @@ if (Get-Command code -ErrorAction SilentlyContinue) {
     if ($installExt -eq "y") {
         foreach ($ext in $VscodeExtensions) {
             Info "Installing: $ext"
-            # --force updates if already installed, avoids opening VS Code windows
-            code --install-extension $ext --force 2>$null | Out-Null
-            Log "Installed: $ext"
+            # --force updates if already installed, avoids opening VS Code windows.
+            # Wrapped: `code` shells out to node, whose deprecation warnings go to
+            # stderr -- under $ErrorActionPreference = "Stop" that killed the script.
+            Invoke-Native { code --install-extension $ext --force } | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Log "Installed: $ext"
+            } else {
+                Warn "Could not install $ext (exit $LASTEXITCODE) -- install it from the VS Code UI"
+            }
         }
     } else {
         Info "Skipping. Install later:"

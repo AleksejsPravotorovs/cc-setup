@@ -82,4 +82,9 @@ Write-Host "  Files downloaded."
 Write-Host "  Running setup..."
 Write-Host ""
 
+# setup.ps1 is interactive and shells out to native tools (winget, npm, wsl, code)
+# that write to stderr. Under $ErrorActionPreference = "Stop", PowerShell 5.1 turns
+# those stderr lines into a terminating NativeCommandError and kills the bootstrap,
+# so the preference is relaxed for the handoff. Nothing follows this call.
+$ErrorActionPreference = "Continue"
 & powershell -ExecutionPolicy Bypass -NoProfile -File ".\scripts\setup.ps1"

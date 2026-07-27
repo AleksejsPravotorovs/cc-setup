@@ -19,6 +19,19 @@ function Warn($msg) { Write-Host "  [!!] $msg" -ForegroundColor Yellow }
 function Info($msg) { Write-Host "  [ii] $msg" -ForegroundColor Cyan }
 function Fail($msg) { Write-Host "  [XX] $msg" -ForegroundColor Red }
 
+# --- Native command helper ----------------------------------------
+# $ErrorActionPreference = "Stop" (above) makes PowerShell 5.1 promote ANY line a
+# native command writes to stderr into a *terminating* NativeCommandError. `git pull`
+# prints its progress to stderr, so a SUCCESSFUL pull used to be reported as failed.
+# Native commands run through this helper; the exit code lands in $LASTEXITCODE.
+
+function Invoke-NativeInteractive {
+    param([Parameter(Mandatory = $true)][scriptblock]$Command)
+    $prev = $script:ErrorActionPreference
+    $script:ErrorActionPreference = "Continue"
+    try { & $Command } finally { $script:ErrorActionPreference = $prev }
+}
+
 # Detect mode
 if ((Test-Path "$ProjectDir\claude-user-config") -and (Test-Path "$ProjectDir\scripts\install-plugins.sh")) {
     $Mode = "cc-setup"
@@ -42,10 +55,12 @@ if ($Mode -eq "cc-setup") {
         Info "Pulling latest cc-setup..."
         Push-Location $ProjectDir
         try {
-            git pull --ff-only
-            Log "cc-setup up to date"
-        } catch {
-            Warn "git pull failed (local changes? non-fast-forward?) -- continuing with current checkout"
+            Invoke-NativeInteractive { git pull --ff-only }
+            if ($LASTEXITCODE -eq 0) {
+                Log "cc-setup up to date"
+            } else {
+                Warn "git pull failed (local changes? non-fast-forward?) -- continuing with current checkout"
+            }
         } finally {
             Pop-Location
         }
@@ -70,7 +85,7 @@ if ($Mode -eq "cc-setup") {
     }
 
     if ($bashPath) {
-        & $bashPath "$ProjectDir\scripts\install-plugins.sh"
+        Invoke-NativeInteractive { & $bashPath "$ProjectDir\scripts\install-plugins.sh" }
     } else {
         Fail "Git Bash not found -- cannot run install-plugins.sh"
         Info "Install Git for Windows: https://git-scm.com/downloads/win"
@@ -80,7 +95,7 @@ if ($Mode -eq "cc-setup") {
     Write-Host ""
     if (Test-Path "$ProjectDir\scripts\apply-self-edit-safeguard-fix.sh") {
         Info "Applying self-edit-safeguard protocol to cc-setup itself..."
-        & $bashPath "$ProjectDir\scripts\apply-self-edit-safeguard-fix.sh" "$ProjectDir"
+        Invoke-NativeInteractive { & $bashPath "$ProjectDir\scripts\apply-self-edit-safeguard-fix.sh" "$ProjectDir" }
     }
 
     Write-Host ""
@@ -188,7 +203,7 @@ if (Test-Path "$ProjectDir\scripts\apply-self-edit-safeguard-fix.sh") {
     }
     if ($bashPath) {
         Info "Applying self-edit-safeguard protocol (idempotent)..."
-        & $bashPath "$ProjectDir\scripts\apply-self-edit-safeguard-fix.sh" "$ProjectDir"
+        Invoke-NativeInteractive { & $bashPath "$ProjectDir\scripts\apply-self-edit-safeguard-fix.sh" "$ProjectDir" }
         Log "Protocol applied / verified"
     } else {
         Warn "Git Bash not found -- skipping safeguard apply (install Git for Windows to enable)"
