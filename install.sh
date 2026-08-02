@@ -34,11 +34,11 @@ echo ""
 mkdir -p scripts .claude/agents .claude/commands .claude/snapshots
 
 # --- Scripts ---
-for file in setup.sh start.sh stop.sh update.sh install-plugins.sh; do
+for file in setup.sh start.sh stop.sh update.sh install-plugins.sh doctor.sh; do
   echo "  Downloading scripts/$file..."
   curl -fsSL "$REPO/scripts/$file" -o "scripts/$file"
 done
-chmod +x scripts/setup.sh scripts/start.sh scripts/stop.sh scripts/update.sh scripts/install-plugins.sh
+chmod +x scripts/setup.sh scripts/start.sh scripts/stop.sh scripts/update.sh scripts/install-plugins.sh scripts/doctor.sh
 
 # --- Agents ---
 for agent in lead frontend backend devops skeptic qa researcher; do

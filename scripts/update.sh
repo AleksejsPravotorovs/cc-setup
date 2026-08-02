@@ -90,11 +90,11 @@ echo ""
 mkdir -p scripts .claude/agents .claude/commands .claude/snapshots .vscode
 
 # Scripts (includes apply-self-edit-safeguard-fix.sh — protocol patcher)
-for file in setup.sh start.sh stop.sh update.sh install-plugins.sh apply-self-edit-safeguard-fix.sh; do
+for file in setup.sh start.sh stop.sh update.sh install-plugins.sh doctor.sh apply-self-edit-safeguard-fix.sh; do
   echo "  scripts/$file"
   curl -fsSL "$REPO_URL/scripts/$file" -o "$PROJECT_DIR/scripts/$file"
 done
-chmod +x "$PROJECT_DIR"/scripts/setup.sh "$PROJECT_DIR"/scripts/start.sh "$PROJECT_DIR"/scripts/update.sh "$PROJECT_DIR"/scripts/install-plugins.sh "$PROJECT_DIR"/scripts/apply-self-edit-safeguard-fix.sh
+chmod +x "$PROJECT_DIR"/scripts/setup.sh "$PROJECT_DIR"/scripts/start.sh "$PROJECT_DIR"/scripts/update.sh "$PROJECT_DIR"/scripts/install-plugins.sh "$PROJECT_DIR"/scripts/doctor.sh "$PROJECT_DIR"/scripts/apply-self-edit-safeguard-fix.sh
 
 # Agents
 for agent in lead frontend backend devops skeptic qa researcher; do
