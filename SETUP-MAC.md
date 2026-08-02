@@ -18,7 +18,7 @@ The setup script detects what's missing and offers to install each item:
 2. **Homebrew** — macOS package manager (handles Apple Silicon automatically)
 3. **Git** — version control + prompts to configure user.name/email
 4. **Node.js + npm** — JavaScript runtime (via Homebrew)
-5. **Claude CLI** — `npm install -g @anthropic-ai/claude-code`
+5. **Claude CLI** — official installer (`curl -fsSL https://claude.ai/install.sh | bash` → `~/.local/bin/claude`, auto-updating). Falls back to `brew install --cask claude-code`, then to `npm install -g @anthropic-ai/claude-code` if npm's global prefix is writable. Never `sudo npm`.
 6. **tmux** — terminal multiplexer for agent team split panes (via Homebrew)
 7. **Project dependencies** — `npm install` (only if `package.json` exists)
 8. **VS Code extensions** — ESLint, Tailwind CSS IntelliSense, Prettier
@@ -78,6 +78,18 @@ Run `source ~/.zshrc` (or `source ~/.bashrc`) or open a new terminal. The setup 
 
 **"tmux not found"**
 Run `brew install tmux`, or re-run setup with `pp-setup`.
+
+**Claude CLI install fails with `EACCES: permission denied, mkdir '/usr/local/lib/node_modules/...'`**
+npm's global prefix is root-owned (usually because Node came from the nodejs.org `.pkg`
+installer). Do **not** fix this with `sudo npm install -g`. Install Claude Code the
+recommended way instead, then re-run `pp-setup`:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+It installs to `~/.local/bin/claude`, needs no admin rights, and auto-updates.
+Check your prefix with `npm config get prefix` and `ls -ld $(npm config get prefix)/lib/node_modules`.
 
 **Homebrew on Apple Silicon**
 The setup handles `/opt/homebrew` automatically and adds it to your `.zshrc`.

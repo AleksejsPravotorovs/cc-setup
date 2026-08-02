@@ -8,8 +8,25 @@ WORK_DIR="${1:-$(pwd)}"
 SESSION="$(basename "$WORK_DIR" | tr '[:upper:].' '[:lower:]-')"
 TMUX_CONF="$SCRIPT_DIR/.tmux.agent.conf"
 
+# The native Claude install lives in ~/.local/bin, which a freshly opened or
+# non-login shell may not have on PATH. Look there before declaring claude
+# missing — otherwise pp dead-ends and sends the user back to setup.sh, which
+# correctly finds Claude already installed and changes nothing.
+if [ -x "$HOME/.local/bin/claude" ]; then
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+  esac
+fi
+
 command -v tmux  >/dev/null 2>&1 || { echo "tmux not found — run ./scripts/setup.sh to install"; exit 1; }
-command -v claude >/dev/null 2>&1 || { echo "claude not found — run ./scripts/setup.sh to install"; exit 1; }
+if ! command -v claude >/dev/null 2>&1; then
+  echo "claude not found on PATH."
+  echo "  Install it:  curl -fsSL https://claude.ai/install.sh | bash"
+  echo "  Then open a new terminal (or run: exec \$SHELL -l) and try pp again."
+  echo "  Diagnose:    bash \"$SCRIPT_DIR/scripts/doctor.sh\""
+  exit 1
+fi
 
 # Kill previous session if exists
 tmux kill-session -t "$SESSION" 2>/dev/null || true
@@ -29,6 +46,10 @@ tmux "${TMUX_FLAGS[@]}" new-session -d -s "$SESSION" -c "$WORK_DIR"
 
 # Set agent teams env var for the session (inherited by teammate panes)
 tmux set-environment -t "$SESSION" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS 1
+
+# Pass the PATH we just verified into the session, so panes find the same
+# claude binary this script found — even if their shell rc does not add it
+tmux set-environment -t "$SESSION" PATH "$PATH"
 
 # Clean VS Code env vars from session so new panes don't inherit them
 tmux set-environment -t "$SESSION" -u VSCODE_SHELL_INTEGRATION 2>/dev/null || true

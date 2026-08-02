@@ -435,28 +435,115 @@ ensure_node() {
 
 # ═══════════════════════════════════════════════════════════════════
 # CLAUDE CLI — detect, install
+#
+# Install order — never sudo. Anthropic's docs warn explicitly against
+# `sudo npm install -g` (permission + security problems):
+#   1. official native installer → ~/.local/bin/claude, auto-updating
+#   2. Homebrew cask             → when the installer could not be used
+#   3. npm -g                    → only if the global prefix is writable
+# npm alone used to be the only path, and it dead-ended every Mac whose
+# npm prefix is root-owned (Node from the nodejs.org .pkg) with EACCES.
 # ═══════════════════════════════════════════════════════════════════
 
-install_claude() {
-  if ! command -v npm >/dev/null 2>&1; then
-    fail "npm not available — install Node.js first"
-    return 1
+LOCAL_BIN="$HOME/.local/bin"
+
+# The native installer puts the launcher in ~/.local/bin, which a default
+# macOS shell does not have on PATH. Add it for this run, and persist it
+# once so a fresh terminal can find `claude` too.
+ensure_local_bin_on_path() {
+  case ":$PATH:" in
+    *":$LOCAL_BIN:"*) ;;
+    *) export PATH="$LOCAL_BIN:$PATH" ;;
+  esac
+  hash -r 2>/dev/null || true
+
+  local RC=""
+  case "$(basename "${SHELL:-/bin/zsh}")" in
+    zsh)  RC="$HOME/.zshrc" ;;
+    bash) if [ -f "$HOME/.bash_profile" ]; then RC="$HOME/.bash_profile"; else RC="$HOME/.bashrc"; fi ;;
+    *)    return 0 ;;
+  esac
+
+  if [ -f "$RC" ] && grep -q '\.local/bin' "$RC" 2>/dev/null; then
+    return 0
   fi
 
-  info "Installing Claude CLI via npm..."
-  npm install -g @anthropic-ai/claude-code
+  {
+    echo ''
+    echo '# Added by cc-setup — Claude CLI (native install)'
+    echo 'export PATH="$HOME/.local/bin:$PATH"'
+  } >> "$RC" && info "Added ~/.local/bin to PATH in $RC"
+}
 
-  if command -v claude >/dev/null 2>&1; then
-    log "Claude CLI installed: $(claude --version 2>/dev/null | head -1)"
-    return 0
+# True only when this user can write into npm's global prefix. A root-owned
+# prefix (typically /usr/local from the nodejs.org .pkg) is what produces
+# `EACCES: permission denied, mkdir '/usr/local/lib/node_modules/...'`.
+npm_prefix_writable() {
+  command -v npm >/dev/null 2>&1 || return 1
+  local PREFIX
+  PREFIX="$(npm config get prefix 2>/dev/null)" || return 1
+  [ -n "$PREFIX" ] && [ "$PREFIX" != "undefined" ] || return 1
+  if [ -d "$PREFIX/lib/node_modules" ]; then
+    [ -w "$PREFIX/lib/node_modules" ]
   else
-    fail "Claude CLI installation failed"
-    echo "  Try manually: npm install -g @anthropic-ai/claude-code"
-    return 1
+    [ -w "$PREFIX" ]
   fi
 }
 
+install_claude_native() {
+  command -v curl >/dev/null 2>&1 || return 1
+  info "Installing Claude CLI via the official installer (no npm, no sudo)..."
+  # bash reads the script from the pipe — do not redirect its stdin here.
+  curl -fsSL https://claude.ai/install.sh | bash || return 1
+  ensure_local_bin_on_path
+  command -v claude >/dev/null 2>&1
+}
+
+install_claude_brew() {
+  command -v brew >/dev/null 2>&1 || return 1
+  info "Installing Claude CLI via Homebrew cask..."
+  brew install --cask claude-code || return 1
+  hash -r 2>/dev/null || true
+  command -v claude >/dev/null 2>&1
+}
+
+install_claude_npm() {
+  command -v npm >/dev/null 2>&1 || return 1
+  if ! npm_prefix_writable; then
+    warn "Skipping npm — its global prefix ($(npm config get prefix 2>/dev/null || echo '?')) is not writable by $(whoami)"
+    return 1
+  fi
+  info "Installing Claude CLI via npm..."
+  npm install -g @anthropic-ai/claude-code || return 1
+  hash -r 2>/dev/null || true
+  command -v claude >/dev/null 2>&1
+}
+
+install_claude() {
+  install_claude_native && { log "Claude CLI installed: $(claude --version 2>/dev/null | head -1)"; return 0; }
+  warn "Official installer did not complete — trying Homebrew"
+
+  install_claude_brew && { log "Claude CLI installed: $(claude --version 2>/dev/null | head -1)"; return 0; }
+  warn "Homebrew cask unavailable — trying npm"
+
+  install_claude_npm && { log "Claude CLI installed: $(claude --version 2>/dev/null | head -1)"; return 0; }
+
+  fail "Claude CLI installation failed — all three methods were tried"
+  echo ""
+  echo "  Install it manually with ONE of these, then re-run this script:"
+  echo "    curl -fsSL https://claude.ai/install.sh | bash   # recommended"
+  echo "    brew install --cask claude-code"
+  echo "    npm install -g @anthropic-ai/claude-code         # needs a writable npm prefix"
+  echo ""
+  echo "  Do NOT run 'sudo npm install -g' — it causes permission and security problems."
+  echo "  Help: https://code.claude.com/docs/en/troubleshoot-install"
+  return 1
+}
+
 ensure_claude() {
+  # A previous native install may sit in ~/.local/bin without being on PATH.
+  [ -x "$LOCAL_BIN/claude" ] && ensure_local_bin_on_path
+
   if command -v claude >/dev/null 2>&1; then
     local CLAUDE_VERSION
     CLAUDE_VERSION="$(claude --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")"
@@ -471,7 +558,7 @@ ensure_claude() {
   if [[ "$INSTALL_CLAUDE" == "y" ]]; then
     install_claude
   else
-    fail "Claude CLI is required. Install: npm install -g @anthropic-ai/claude-code"
+    fail "Claude CLI is required. Install: curl -fsSL https://claude.ai/install.sh | bash"
     return 1
   fi
 }

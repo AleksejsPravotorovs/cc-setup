@@ -28,7 +28,7 @@ The setup script detects what's missing and offers to install each item:
 
 1. **Git** — expected to be pre-installed; prompts to configure user.name/email if unset
 2. **Node.js + npm** — JavaScript runtime (via your distro's package manager)
-3. **Claude CLI** — `npm install -g @anthropic-ai/claude-code`
+3. **Claude CLI** — official installer (`curl -fsSL https://claude.ai/install.sh | bash` → `~/.local/bin/claude`, auto-updating), falling back to `npm install -g @anthropic-ai/claude-code` only if npm's global prefix is writable. Never `sudo npm`.
 4. **tmux** — terminal multiplexer for agent team split panes
 5. **Project dependencies** — `npm install` (only if `package.json` exists)
 6. **VS Code extensions** — ESLint, Tailwind CSS IntelliSense, Prettier (if `code` CLI is available)
