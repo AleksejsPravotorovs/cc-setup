@@ -112,3 +112,47 @@ through the broken helper. Fixing the helper removes the apt dependency entirely
 - fix-profile.ps1 never audited for the native-stderr class.
 - setup.ps1 parses `wsl --list --quiet` (UTF-16LE) by accidental string match.
 - No CI parses the .ps1 files on push - this regression would have been caught by one.
+
+---
+
+## 2026-08-02 – macOS Claude CLI install no longer dead-ends on a root-owned npm prefix
+
+**HEAD:** `f473119` on `main`
+**Live:** https://raw.githubusercontent.com/AleksejsPravotorovs/cc-setup/main/install.sh
+
+### Shipped
+- `setup.sh` installed Claude with `npm -g` ONLY. On a Mac whose npm global prefix is the
+  root-owned `/usr/local` (Node from the nodejs.org `.pkg`), that is `EACCES` -> `exit 1`.
+  Field report: colleague's Mac, `mkdir '/usr/local/lib/node_modules/@anthropic-ai'`.
+- `install_claude()` now falls through three methods, never sudo: official installer
+  (`curl -fsSL https://claude.ai/install.sh | bash`) -> Homebrew cask -> npm, and npm only
+  when `npm_prefix_writable` confirms the prefix is user-writable. All three exhausted ->
+  prints the three manual commands instead of dying.
+- `ensure_local_bin_on_path` adds `~/.local/bin` to PATH for the run and once to the shell rc.
+- `start.sh` had the matching dead-end: "claude not found — run setup.sh" fired whenever
+  claude sat in `~/.local/bin` off PATH, looping the user back to a setup with nothing to do.
+  Now checks `~/.local/bin` first and passes the verified PATH into the tmux session.
+- NEW `scripts/doctor.sh` — read-only, no-sudo diagnostic (PATH, conflicting installs, npm
+  prefix ownership, shell rc lines, reachability of 3 Anthropic hosts, `claude doctor`).
+- Second commit `f473119`: `install.sh`/`update.sh` fetch a hardcoded file list that did not
+  include `doctor.sh`, so start.sh's new hint pointed at a nonexistent path. Both now ship it.
+
+### Verified
+- `bash -n` pass: setup.sh, start.sh, doctor.sh, install.sh, update.sh
+- Stubbed probes: root-owned prefix refused; native install wins with npm untouched; PATH
+  persisted to rc; all-methods-fail exits non-zero with manual commands
+- `bash scripts/doctor.sh` -> exit 0, 115 lines
+- Live raw (pinned f473119 AND main): install.sh ships doctor.sh YES, setup.sh native YES,
+  npm_prefix_writable YES, start.sh ~/.local/bin YES, doctor.sh 200
+
+### Open backlog
+- Windows path still installs Claude via npm only (`setup.ps1:314`, `start.ps1:248`), and
+  `SETUP-WINDOWS.md:130` still recommends `sudo npm install -g`. Same class as this bug.
+- No CI parses the .sh/.ps1 files on push.
+- `setup.ps1:268` parses UTF-16LE `wsl --list --quiet` by accidental string match.
+- `setup.sh:132` picks `.bashrc` for non-zsh; `ensure_local_bin_on_path` prefers
+  `.bash_profile`. Harmless today, inconsistent.
+
+### What was NOT touched
+- `.ps1` scripts — this bug is macOS/Linux only.
+- `docs/guardrails/**` — Guardrails Kit v1.0.
