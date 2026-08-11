@@ -1,75 +1,93 @@
 ---
-description: Fast lean prime – repo state + snapshot + vault state in one pass, then work
+description: Fast lean prime - repo state + vault state + cc-setup freshness in ONE bash call, then work
 allowed-tools: Read, Glob, Bash
 ---
 
-# /prime – Fast Lean Prime
+# /prime - Fast Lean Prime (30s hard budget)
 
-Load just enough to start working, in ONE pass, target under ~30s. CLAUDE.md is
-already in context: do NOT re-read it or any style/token files. Do not assume a
-stack (Next.js/src) – confirm it from the file listing below.
+ONE Bash call, ZERO follow-up reads, then a 3-4 line report. CLAUDE.md is already
+in context: do NOT re-read it, any style/token file, the full snapshot, or the
+Obsidian note. The state file is cat'ed INSIDE the bash block - never Read it as
+a second tool call.
 
-## Run this single Bash block, then read at most ONE file, then STOP
+## Run this single Bash block - it is the ENTIRE prime
 
 ```bash
-echo "== recent commits (latest updates) =="
-git log --oneline -8 2>/dev/null
-echo "== uncommitted =="
-git status --short 2>/dev/null | head -40
-echo "== top-level layout =="
-ls -1 2>/dev/null
-echo "== last snapshot entry =="
-SNAP=".claude/snapshots/last-deploy.md"
-[ -f "$SNAP" ] && awk 'BEGIN{buf=""} /^---$/{buf=""; next} {buf=buf $0 "\n"} END{printf "%s", buf}' "$SNAP"
-echo "== My AI Knowledge Base state file =="
+echo "== repo =="
+git log --oneline -5 2>/dev/null
+echo "uncommitted: $(git status --short 2>/dev/null | wc -l | tr -d ' ') files"
+echo "== cc-setup freshness (auto-updates when stale) =="
+CCU="${CC_SETUP_DIR:-$HOME/Downloads/cc-setup}/scripts/cc-update.sh"
+if [ -x "$CCU" ]; then
+  "$CCU" --check; CCRC=$?
+  [ "$CCRC" = "3" ] && bash "$CCU" --apply --quiet && echo "cc-update: applied"
+else
+  echo "cc-setup: cc-update.sh not installed (run pp-update to get it)"
+fi
+echo "== state file (authoritative; <=40 lines by /deploy contract) =="
 VAULT="${OBSIDIAN_VAULT:-$HOME/Desktop/My AI Knowledge Base}"
 NOTE=$(grep -rl "local_path: $(pwd)$" "$VAULT/Projects" 2>/dev/null | head -1)
-[ -n "$NOTE" ] && echo "STATE=$VAULT/Projects/$(basename "$NOTE" .md)-state.md" || echo "STATE=(none)"
-echo "== LAUNCH PLAN (this repo, if present) =="
+STATE=""
+[ -n "$NOTE" ] && STATE="$VAULT/Projects/$(basename "$NOTE" .md)-state.md"
+if [ -n "$STATE" ] && [ -f "$STATE" ]; then
+  head -60 "$STATE"
+else
+  echo "(no state file - fallback: snapshot tail, capped)"
+  SNAP=".claude/snapshots/last-deploy.md"
+  [ -f "$SNAP" ] && tail -40 "$SNAP"
+fi
+echo "== LAUNCH PLAN (if present) =="
 PLAN="LAUNCH-PLAN.md"
 if [ -f "$PLAN" ]; then
   PTOTAL=$(grep -cE '^- \[[ xX]\] \*\*P' "$PLAN" 2>/dev/null || true)
   PDONE=$(grep -cE '^- \[[xX]\] \*\*P' "$PLAN" 2>/dev/null || true)
   NPEND=$(grep -cE '^- \[ \] \*\*N' "$PLAN" 2>/dev/null || true)
-  echo "Progress: ${PDONE}/${PTOTAL} P-steps done · ${NPEND} external (N) tasks still open"
-  echo "-- next unchecked P-step --"
-  grep -nE '^- \[ \] \*\*P' "$PLAN" 2>/dev/null | head -1 || echo "(all P-steps checked – plan complete)"
-  echo ">> STRICT PLAN MODE: the task IS the next unchecked P-step. Read it in LAUNCH-PLAN.md, run its prompt, verify, then mark it [x]. Do NOT skip ahead or improvise."
+  echo "Progress: ${PDONE}/${PTOTAL} P-steps done, ${NPEND} external (N) open"
+  grep -nE '^- \[ \] \*\*P' "$PLAN" 2>/dev/null | head -1 || echo "(all P-steps checked)"
 else
-  echo "(no LAUNCH-PLAN.md – normal prime)"
+  echo "(no LAUNCH-PLAN.md - normal prime)"
 fi
 ```
 
-If a `STATE=<path>` is printed and the file exists, Read that ONE file – it is the
-compact (<=40 line) project state written by /deploy and is the only vault read
-needed. That IS the "info from My AI Knowledge Base".
+## Rules for interpreting the output (no extra tool calls)
 
-## Strict plan mode (only when LAUNCH-PLAN.md exists in this repo)
+- The STATE FILE is the single source of last-session context. It supersedes the
+  snapshot; never open both.
+- cc-setup gate: `cc-update.sh --check` exits 0 = fresh (or throttled, it only hits
+  the network every 6h), 3 = behind origin/main and the block already auto-applied
+  the update, 4 = offline / not a clone (ignore, never block on it). If it printed
+  "cc-update: applied", say so in one clause and carry on - do NOT re-verify, and do
+  NOT spend a second tool call on it.
+- Strict plan mode: if a "next unchecked P-step" printed, that IS the task.
+  Honor any OWNER OVERRIDE recorded inside the step line or the state file
+  (overrides route to a different step - follow them). Report, then IMMEDIATELY
+  start executing the resolved step: open LAUNCH-PLAN.md at that step ONLY (grep
+  its line range - not the whole file), run its prompt, verify, mark [x]. Do not
+  ask "what do you want to work on?".
+- No LAUNCH-PLAN.md: report and ask for the task in one line.
+- The stack comes from CLAUDE.md GROUND TRUTH already in context - do not ls or
+  glob to "confirm" it at prime time.
 
-If the Bash block printed a `next unchecked P-step`, this repo is on a launch plan.
-After the report, do NOT ask "what do you want to work on?" – the task is fixed:
-open `LAUNCH-PLAN.md`, execute the NEXT unchecked P-step exactly (each step is a
-self-contained prompt), then mark that line `[x]`. Follow the plan order and the
-"Зависит от" dependencies; only deviate if the user explicitly overrides. External
-`N` tasks (N1–N5) are human/parallel – surface them but do not try to "do" them in code.
+## Report (3-4 lines, then act)
 
-## Removed on purpose (the slow, redundant second pass)
-Do NOT: read the full Obsidian project NOTE or its Related/Skills/Vault-knowledge
-sections, tail the vault activity log, run MCP verification, or glob for
-src/app | src/components. Those were the second stage that slowed prime with no
-payoff – the snapshot + state file already carry the context.
-
-## Report (3 lines, +1 if on a launch plan) then STOP and wait for the task
 ```
-State: <branch> @ <hash> · <N> uncommitted · stack: <from ls>
-Last session: <1-2 lines – what shipped + what is next, from snapshot/STATE>
-Plan: <done>/<total> P-steps · next: <P-id + title> · <k> external (N) pending   [only if LAUNCH-PLAN.md]
-Ready – <next P-step prompt is queued> / <what do you want to work on? if no plan>
+State: <branch> @ <short-hash> - <N> uncommitted<, cc-setup updated if it was>
+Last: <1 line - what shipped + what is next, from the state file>
+Plan: <done>/<total> P - next: <P-id> <(overridden -> P-x.y if so)> - <k> N open
+<Executing P-x.y ... | What do you want to work on?>
 ```
-No Goal/Plan/Lock template at prime time – that is per-task, after you have the task.
+
+## Hard budget
+
+Prime = 1 Bash call + report. Anything more (second read, snapshot + state file
+both, MCP checks, vault note, src globbing) is a violation of this command.
+Per-task guardrails (PLAN/CODE docs, TASK block) belong to the TASK, after prime.
 
 ## Rules (always active)
-- Ship the smallest correct change; LOCK & PATCH; give exact paths/patches/commands.
+- Ship the smallest correct change; LOCK & PATCH; exact paths/patches/commands.
 - Ask only truly blocking questions; otherwise state assumptions and proceed.
 - No new deps / no global tooling changes / no rewrites unless asked.
-- Model routing v2: subagents doing code work spawn with `model: "fable"`; pure template-fill text may use `model: "opus"`. When torn -> fable.
+- Model policy opus-first: every `Agent(...)` spawn passes `model: "opus"` - code and
+  text alike. `fable` only when the owner names it. Never a dated id.
+- Multi-agent work runs the coordinator doctrine (AGENTS.md): blank-slate subagents,
+  brief-is-the-only-channel, hub-and-spoke, `decomposition.md` before the first spawn.

@@ -128,7 +128,34 @@ Fill the `<PLACEHOLDERS>` with real values from the deploy before writing. The f
 
 If the vault is missing or the project has no Obsidian note: log one line and continue – never fail the deploy.
 
-## 8) Output report
+## 7b) Refresh `OWNER-ACTIONS.md` (the owner's step-by-step action list)
+
+**Standing user instruction (2026-07-27), verbatim:** "From now on, whatever is
+required via my attention, I want you to set up a document for me that I could
+use as a step-by-step guide of what I need to do in order to fix or resolve any
+situation that needs my attention."
+
+`OWNER-ACTIONS.md` at the repo ROOT is that document. Root is a Write-safe path -
+use `Write`/`Edit`, not a heredoc.
+
+Every deploy, reconcile it against what this session actually changed:
+
+1. **Remove** items the owner completed (they said so, or you verified it). A
+   finished item leaves the file - do not build an archive section.
+2. **Add** every NEW item this session created that only the owner can do:
+   hand-applied migrations, third-party account steps (Stripe/Resend/Sentry/DNS),
+   decisions you deliberately refused to make for them, credentials, and anything
+   you wrote into the snapshot as "OWNER" or "QUESTION FOR THE OWNER".
+3. **Update** the `Updated:` line (date + commit) and the status-at-a-glance table.
+4. Keep the register: plain English, click-by-click, exact values, zero repo
+   jargon. Each item states Why / Steps / Done when / Then tell me. The owner must
+   be able to act without opening any other file.
+5. Deploy produced NO owner-facing change? Say so in the report and leave the file
+   alone. Do not churn it.
+
+Why this step exists: `LAUNCH-ACTION-REQUIRED.html` (2026-05-18) was a one-off
+owner to-do that nobody regenerated. It sat two months stale while its contents
+drifted into four other files.## 8) Output report
 
 ```
 Deploy Complete
@@ -138,6 +165,7 @@ Branch:   [branch] → origin/[branch]
 Build:    [pass/fail]
 Snapshot: .claude/snapshots/last-deploy.md (appended)
 State:    <VAULT>/Projects/<slug>-state.md (overwritten)  [or "skipped"]
+Owner:    OWNER-ACTIONS.md (<n> open items)  [or "unchanged - nothing new for the owner"]
 
 Next prime will auto-load the vault state file for context.
 ```
