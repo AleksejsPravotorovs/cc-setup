@@ -65,6 +65,11 @@ Supabase, Vercel, Redis, Sentry CLIs). Agents give and run the PROPER COMMANDS f
 those tables based on what needs fixing - never improvised flags.
 Launch: `./scripts/start.sh`.
 
+Roster `.md` files are OVERWRITTEN by fleet syncs. To keep project-authored content in
+one, put it below this exact line - everything from the marker to EOF survives every
+future sync verbatim:
+`<!-- PROJECT-LOCAL: preserved across fleet syncs -->`
+
 **Model policy: opus-first (2026-08-08).** Owner, verbatim: "why are the agents fable 5... please, from now on, use opus 5". **Opus 5** (alias `opus`) is the DEFAULT for EVERY spawn - code and text alike: frontend, backend, devops/infra, schema/auth/payments, architecture, debugging, code review, snapshots, commit subjects, boilerplate docs. Every `Agent(...)` spawn passes `model: "opus"` explicitly. `fable` is no longer spawned by default - use it only when the owner names it. NEVER pin a dated/closed id (e.g. `claude-opus-4-8`) - aliases survive retirements. New agent .md files must include a model line. GSD agents are governed by `/gsd:set-profile` instead.
 
 ## Coordinator doctrine (multi-agent work) - full version: `/build-with-agent-team`

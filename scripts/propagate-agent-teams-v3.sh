@@ -15,7 +15,10 @@
 #      (same overwrite semantics as pp-update; one-time .bak is kept).
 #   2. Sync the 7 core roster agents from ~/.claude/agents/ into
 #      <local_path>/.claude/agents/ (roster files only - project-specific extra
-#      agents are never touched).
+#      agents are never touched). A roster file may keep project-authored content
+#      by putting it below the line
+#        <!-- PROJECT-LOCAL: preserved across fleet syncs -->
+#      everything from that marker to EOF survives every future sync verbatim.
 #   3. If <local_path>/.claude/commands/ exists, sync build-with-agent-team.md,
 #      deploy.md, prime.md from ~/.claude/commands/.
 #   4. If the project is a git repo, stage exactly the synced paths and commit.
@@ -196,6 +199,49 @@ sync_file() {
   echo 1
 }
 
+PROJECT_LOCAL_MARKER="<!-- PROJECT-LOCAL: preserved across fleet syncs -->"
+
+# Like sync_file, but keeps everything from PROJECT_LOCAL_MARKER to EOF in the target.
+# Echoes 1 / 0 / E exactly like sync_file (it runs in a $(...) subshell).
+sync_file_preserving() {
+  local src="$1" dst="$2" tmp
+  if [ ! -f "$dst" ] || ! /usr/bin/grep -qF "$PROJECT_LOCAL_MARKER" "$dst"; then
+    sync_file "$src" "$dst"; return 0
+  fi
+  if [ -L "$dst" ]; then
+    echo "ERROR: refusing to overwrite symlink $dst" >&2
+    echo E; return 0
+  fi
+  tmp="$dst.cc-merge.$$"
+  if ! /bin/cat "$src" > "$tmp" 2>/dev/null; then
+    echo "ERROR: cannot stage merge for $dst" >&2; /bin/rm -f "$tmp"; echo E; return 0
+  fi
+  /usr/bin/awk -v m="$PROJECT_LOCAL_MARKER" 'index($0, m) { f = 1 } f' "$dst" >> "$tmp"
+  if /usr/bin/cmp -s "$tmp" "$dst"; then
+    /bin/rm -f "$tmp"; echo 0; return 0
+  fi
+  if [ "$DRY_RUN" = "1" ]; then
+    /bin/rm -f "$tmp"; log "DRY: would sync $dst (preserving PROJECT-LOCAL tail)"; echo 1; return 0
+  fi
+  if ! /bin/mv "$tmp" "$dst"; then
+    echo "ERROR: merge write failed: $dst" >&2; /bin/rm -f "$tmp"; echo E; return 0
+  fi
+  log "SYNC: $dst (PROJECT-LOCAL tail preserved)"
+  echo 1
+}
+
+# One-time backup of a file we are about to overwrite, kept beside it. Roster and
+# command files are synced wholesale, so any project-authored section in them would
+# otherwise be unrecoverable in non-git projects (and noisy to recover in git ones).
+backup_once() {
+  local src="$1" dst="$2"
+  [ "$DRY_RUN" = "1" ] && return 0
+  [ -f "$dst" ] || return 0
+  [ -f "$dst.bak-agent-teams-v3" ] && return 0
+  /usr/bin/cmp -s "$src" "$dst" && return 0
+  /bin/cp "$dst" "$dst.bak-agent-teams-v3" || true
+}
+
 process_project() {
   local note="$1"
   local base="${note##*/}"
@@ -235,11 +281,7 @@ process_project() {
     echo "ERROR: $agents_target is a symlink - refusing" >&2
     ERRORS=$((ERRORS + 1))
   else
-    if [ -f "$agents_target" ] && ! /usr/bin/cmp -s "$CANON_AGENTS_MD" "$agents_target"; then
-      if [ "$DRY_RUN" != "1" ] && [ ! -f "$agents_target.bak-agent-teams-v3" ]; then
-        /bin/cp "$agents_target" "$agents_target.bak-agent-teams-v3"
-      fi
-    fi
+    backup_once "$CANON_AGENTS_MD" "$agents_target"
     wrote=$(sync_file "$CANON_AGENTS_MD" "$agents_target")
     case "$wrote" in
       1) COUNT_AGENTS_MD=$((COUNT_AGENTS_MD + 1)); changed=1 ;;
@@ -257,7 +299,8 @@ process_project() {
       COUNT_AGENT_FILES=$((COUNT_AGENT_FILES + 1)); changed=1
       continue
     fi
-    wrote=$(sync_file "$CANON_AGENT_DIR/$name.md" "$local_path/.claude/agents/$name.md")
+    backup_once "$CANON_AGENT_DIR/$name.md" "$local_path/.claude/agents/$name.md"
+    wrote=$(sync_file_preserving "$CANON_AGENT_DIR/$name.md" "$local_path/.claude/agents/$name.md")
     case "$wrote" in
       1) COUNT_AGENT_FILES=$((COUNT_AGENT_FILES + 1)); changed=1 ;;
       E) ERRORS=$((ERRORS + 1)) ;;
@@ -267,7 +310,8 @@ process_project() {
   # ── 3. fleet commands (only where the project already has a commands dir) ─
   if [ -d "$local_path/.claude/commands" ]; then
     for name in $COMMANDS; do
-      wrote=$(sync_file "$CANON_CMD_DIR/$name.md" "$local_path/.claude/commands/$name.md")
+      backup_once "$CANON_CMD_DIR/$name.md" "$local_path/.claude/commands/$name.md"
+      wrote=$(sync_file_preserving "$CANON_CMD_DIR/$name.md" "$local_path/.claude/commands/$name.md")
       case "$wrote" in
         1) COUNT_CMD_FILES=$((COUNT_CMD_FILES + 1)); changed=1 ;;
         E) ERRORS=$((ERRORS + 1)) ;;
