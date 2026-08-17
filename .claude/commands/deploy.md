@@ -5,7 +5,7 @@ allowed-tools: Bash, Read, Edit, Write, Glob, Grep
 
 # /deploy – Commit & Deploy
 
-**Model routing v2:** /deploy runs inline. If a helper agent is spawned: code verification / build debugging -> `model: "fable"`; snapshot/state-file template fill (steps 6-7) -> `model: "opus"` is fine.
+**Model policy: opus-first, sonnet for trivial text.** /deploy runs inline. A helper agent for code verification or build debugging passes `model: "opus"`; snapshot / state-file template fill (steps 6-7) may pass `model: "sonnet"`. `fable` is retired - never spawn it.
 
 ## 1) Pre-flight (parallel)
 

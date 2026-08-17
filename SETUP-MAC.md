@@ -24,7 +24,7 @@ The setup script detects what's missing and offers to install each item:
 8. **VS Code extensions** — ESLint, Tailwind CSS IntelliSense, Prettier
 
 It also configures:
-- `~/.claude/settings.json` — user-level agent teams settings (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, `teammateMode: tmux`)
+- `~/.claude/settings.json` — user-level settings. Agent teams are OFF (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0`) and `teammateMode` is unset (harness default `in-process`)
 - `.gitignore` — adds `.env` and `.env.*` entries
 
 ## What it downloads

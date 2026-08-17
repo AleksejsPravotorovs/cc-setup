@@ -634,13 +634,13 @@ if (Test-Path $userSettingsFile) {
         try {
             $settings = $content | ConvertFrom-Json
             if (-not $settings.env) { $settings | Add-Member -NotePropertyName "env" -NotePropertyValue ([PSCustomObject]@{}) }
-            $settings.env | Add-Member -NotePropertyName "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" -NotePropertyValue "1" -Force
+            $settings.env | Add-Member -NotePropertyName "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" -NotePropertyValue "0" -Force
             $settings | Add-Member -NotePropertyName "teammateMode" -NotePropertyValue $TeammateMode -Force
             $settings | ConvertTo-Json -Depth 10 | Set-Content $userSettingsFile -Encoding UTF8
             Log "Updated $userSettingsFile (teammateMode: $TeammateMode)"
         } catch {
             Warn "Could not auto-update user settings. Add manually:"
-            Write-Host '    env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"' -ForegroundColor White
+            Write-Host '    env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "0"' -ForegroundColor White
             Write-Host "    teammateMode = ""$TeammateMode""" -ForegroundColor White
         }
     } else {
@@ -650,7 +650,7 @@ if (Test-Path $userSettingsFile) {
     $settingsJson = @"
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
   },
   "teammateMode": "$TeammateMode"
 }
@@ -674,7 +674,7 @@ if (Test-Path ".claude/settings.json") {
         try {
             $settings = $content | ConvertFrom-Json
             if (-not $settings.env) { $settings | Add-Member -NotePropertyName "env" -NotePropertyValue ([PSCustomObject]@{}) }
-            $settings.env | Add-Member -NotePropertyName "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" -NotePropertyValue "1" -Force
+            $settings.env | Add-Member -NotePropertyName "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" -NotePropertyValue "0" -Force
             $settings | Add-Member -NotePropertyName "teammateMode" -NotePropertyValue $TeammateMode -Force
             $settings | ConvertTo-Json -Depth 10 | Set-Content ".claude/settings.json" -Encoding UTF8
             Log "Updated .claude\settings.json (teammateMode: $TeammateMode)"
@@ -688,7 +688,7 @@ if (Test-Path ".claude/settings.json") {
     $projSettings = @"
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
   },
   "teammateMode": "$TeammateMode"
 }
@@ -858,7 +858,7 @@ Write-Host "+======================================+" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Agent Teams (Official Mechanism):"
 Write-Host "    CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1  Enabled in settings"
-Write-Host "    teammateMode: tmux                      Teammates auto-create split panes via WSL tmux"
+Write-Host "    Agent teams OFF                         Subagents run in-process and self-exit"
 Write-Host "    .claude\settings.json                   Project-level settings"
 Write-Host "    ~\.claude\settings.json                 User-level settings"
 Write-Host "    .claude\agents\              $($ExpectedAgents.Count) agents: $($ExpectedAgents -join ', ')"

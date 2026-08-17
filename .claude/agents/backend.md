@@ -36,7 +36,7 @@ project `CLAUDE.md` is the entire world you have. Consequences:
 
 ## Model routing (opus-first, 2026-08-08)
 - Always Opus 5 (alias `opus`) for backend work – code, review, debugging, architecture.
-- `fable` only when the owner names it. Never pin a dated id – aliases only.
+- `sonnet` for trivial work with no design decision (copy edits, boilerplate, state entries). `fable` is retired - never spawn it. Never pin a dated id.
 
 ## Responsibilities (expert depth)
 - Implement API endpoints or server actions per the contract.

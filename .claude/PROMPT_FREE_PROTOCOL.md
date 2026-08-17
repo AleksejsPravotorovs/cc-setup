@@ -32,9 +32,9 @@ No `AskUserQuestion`, no "should I…?". Pick simplest option, proceed.
 
 ## Rule 6 – Auto-approve stack (belt, not mandate)
 - `~/.claude/hooks/auto-approve.sh` (PreToolUse) + `auto-approve-permission-request.sh` (PermissionRequest)
-- `~/.claude/settings.json` + project `.claude/settings.json`: `permissionExplainerEnabled: false`, `defaultMode: "bypassPermissions"`, `skipDangerousModePermissionPrompt: true`, `teammateMode: "tmux"`
+- `~/.claude/settings.json` + project `.claude/settings.json`: `permissionExplainerEnabled: false`, `defaultMode: "bypassPermissions"`, `skipDangerousModePermissionPrompt: true`. **`teammateMode` is deliberately unset** (default `"in-process"`) and `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is `"0"`
 - `.vscode/settings.json` (workspace): `chat.tools.global.autoApprove: true`, `chat.tools.autoApprove: true`, `chat.tools.terminal.autoApprove: {"/.*/":true}`, `chat.tools.edits.autoApprove: {"**/*":true}`, `chat.agent.maxRequests: 999`, `chat.confirmBeforeRequest: false`
-- User-level VS Code: `claudeCode.allowDangerouslySkipPermissions: true`, `claudeCode.initialPermissionMode: "bypassPermissions"`, `claudeCode.permissionExplainerEnabled: false`, `claudeCode.teammateMode: "tmux"`
+- User-level VS Code: `claudeCode.allowDangerouslySkipPermissions: true`, `claudeCode.initialPermissionMode: "bypassPermissions"`, `claudeCode.permissionExplainerEnabled: false` (no `claudeCode.teammateMode` - the default is correct)
 
 These handle 99%. The hardcoded `.claude/**` safeguard is NOT covered – Rule 1 is the only defense.
 

@@ -32,9 +32,9 @@ No `AskUserQuestion`, no "should I…?". Pick simplest option, proceed.
 
 ## Rule 6 – Auto-approve stack (belt, not mandate)
 - `~/.claude/hooks/auto-approve.sh` (PreToolUse) + `auto-approve-permission-request.sh` (PermissionRequest)
-- `~/.claude/settings.json` + project `.claude/settings.json`: `permissionExplainerEnabled: false`, `defaultMode: "bypassPermissions"`, `skipDangerousModePermissionPrompt: true`, `teammateMode: "tmux"`
+- `~/.claude/settings.json` + project `.claude/settings.json`: `permissionExplainerEnabled: false`, `defaultMode: "bypassPermissions"`, `skipDangerousModePermissionPrompt: true`. **`teammateMode` is deliberately unset** (default `"in-process"`) and `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is `"0"` - see the agent-lifecycle rule below
 - `.vscode/settings.json` (workspace): `chat.tools.global.autoApprove: true`, `chat.tools.autoApprove: true`, `chat.tools.terminal.autoApprove: {"/.*/":true}`, `chat.tools.edits.autoApprove: {"**/*":true}`, `chat.agent.maxRequests: 999`, `chat.confirmBeforeRequest: false`
-- User-level VS Code: `claudeCode.allowDangerouslySkipPermissions: true`, `claudeCode.initialPermissionMode: "bypassPermissions"`, `claudeCode.permissionExplainerEnabled: false`, `claudeCode.teammateMode: "tmux"`
+- User-level VS Code: `claudeCode.allowDangerouslySkipPermissions: true`, `claudeCode.initialPermissionMode: "bypassPermissions"`, `claudeCode.permissionExplainerEnabled: false` (no `claudeCode.teammateMode` - the default is correct)
 
 These handle 99%. The hardcoded `.claude/**` safeguard is NOT covered – Rule 1 is the only defense.
 
@@ -70,7 +70,7 @@ one, put it below this exact line - everything from the marker to EOF survives e
 future sync verbatim:
 `<!-- PROJECT-LOCAL: preserved across fleet syncs -->`
 
-**Model policy: opus-first (2026-08-08).** Owner, verbatim: "why are the agents fable 5... please, from now on, use opus 5". **Opus 5** (alias `opus`) is the DEFAULT for EVERY spawn - code and text alike: frontend, backend, devops/infra, schema/auth/payments, architecture, debugging, code review, snapshots, commit subjects, boilerplate docs. Every `Agent(...)` spawn passes `model: "opus"` explicitly. `fable` is no longer spawned by default - use it only when the owner names it. NEVER pin a dated/closed id (e.g. `claude-opus-4-8`) - aliases survive retirements. New agent .md files must include a model line. GSD agents are governed by `/gsd:set-profile` instead.
+**Model policy: opus-first, sonnet for trivial text (2026-08-17).** Owner retired Fable 5 outright - "No more Fable 5"; use the best model for each individual job. **Opus 5** (alias `opus`) is the DEFAULT for anything that ships or is reviewed as code: frontend, backend, devops/infra, schema/auth/payments, architecture, debugging, code review. **Sonnet 5** (alias `sonnet`) takes trivial work with no design decision: copy and wording edits, boilerplate docs, commit subjects, snapshot/state entries, mechanical renames. **Haiku 4.5** is available for high-volume mechanical passes. `fable` is retired and must never be spawned. Every `Agent(...)` spawn passes its alias explicitly. NEVER pin a dated/closed id - aliases survive retirements. New agent .md files must include a model line. GSD agents are governed by `/gsd:set-profile` instead.
 
 ## Coordinator doctrine (multi-agent work) - full version: `/build-with-agent-team`
 
@@ -112,62 +112,46 @@ fact: **every subagent starts blank.**
     does NOT fix staleness - it copies the stale baseline into both branches.
 
 <!-- FLEET:AGENT-SHUTDOWN (managed by agent-team-shutdown-upgrade.sh) -->
-## Rule - Shut down completed teammates (clean teardown, no orphan panes)
+## Rule - Agent lifecycle: use the DEFAULTS, never hand-roll teardown
 
-Claude Code Agent Teams keep teammates ALIVE after a task by design - they idle
-awaiting more work; they do NOT self-terminate. Clean shutdown is the LEAD's
-explicit job. Skipping it is why panes linger and idle agents burn tokens.
+**Corrected 2026-08-17.** The previous version of this rule commanded
+`scripts/reap-teammates.sh --reap` and described `SessionEnd` / `Stop` /
+`SubagentStop` hooks. **None of it was ever wired up in this repo** - no
+`scripts/reap-teammates.sh`, and no such hooks in either `settings.json`. (The script
+is real: it lives in `~/Downloads/cc-setup/scripts/` and in the durance.dev,
+averium-consulting and novashop clones. It was simply never synced here.) So nothing
+was ever reaped, and the command this rule told every session to run would have failed. Worse, the doctrine this rule enforced is precisely what
+produced the dead-but-resident rows in the agent panel.
 
-### The teardown is ONE command. Everything else below is context.
+### Root cause of the zombie agent rows (measured 2026-08-17)
 
-```
-scripts/reap-teammates.sh --reap     # kill every teammate, verified by PID
-scripts/reap-teammates.sh --check    # the ONLY accepted proof they are gone
-```
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` was `1` in three places at once
+(`~/.claude/settings.json`, project `.claude/settings.json`, `~/.zshrc:2`). Per the
+official docs, while that flag is on, **a subagent that Claude names launches as a
+teammate** - "teams can form even when you didn't ask for one". Teammates do not
+self-terminate; they idle indefinitely awaiting more work. Because this very file
+also mandated a `name:` on every `Agent(...)` spawn, EVERY delegation silently became
+a teammate. The docs name the second symptom too: "an orchestration flow that waits
+on subagent results can stall" - the row you can arrow into that is alive and idle.
 
-Run `--reap` the moment a deliverable is verified. Do not send a shutdown
-request and assume it worked, and do not park a finished teammate "in case
-there is more" - respawn fresh when new work actually appears.
+### The rule now
 
-**`ListAgents`, the agent panel, and the task list are NOT proof.** Measured
-2026-08-08: `ListAgents` returned "No reachable agents" while the teammate was
-still running (pid 41677, 56 minutes resident), and the agent panel kept showing
-a row for a process that was already dead. Both lie in both directions.
-`scripts/reap-teammates.sh --check` reads `ps` and is the only honest answer;
-exit 0 means none alive, exit 1 lists them.
+**Agent teams are OFF** - `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "0"` in both
+settings files. Consequences, all of them wanted:
 
-**Do not treat "idle" as "finished".** Measured the same day: `TeammateIdle`
-fires while an agent is mid tool call - an agent whose only job was `sleep 120`
-had already reported idle with the sleep still running. And `SubagentStop` did
-NOT fire at all for a background teammate on 2.1.226; that agent sat resident
-for 7 minutes after its work completed. So no hook event reliably means "done",
-which is exactly why the lead must run `--reap` deliberately.
+- A named subagent is an ordinary **subagent** again: its result returns to the caller
+  on completion, and it terminates by itself.
+- `teammateMode` is unset, so the default `"in-process"` applies. No tmux panes means
+  no orphan panes and no Ink renderer crash in narrow panes.
+- **There is no teardown step. Do not write one.** Subagent cleanup is the harness's
+  job, and with the flag off it does it correctly.
 
-The harness now backstops this (`.claude/settings.json`):
-- `SessionEnd` -> `--reap`. Guarantees nothing outlives the session, ever.
-- `Stop` -> `--sweep`. Every turn, prints any resident teammate with its uptime.
-  It only auto-kills agents with a real completion marker; an unmarked agent is
-  reported, never killed, because killing live work is worse than a nag.
-- `SubagentStop` / `TaskCompleted` -> `--mark-done`. Wired so that if either
-  starts firing, precise auto-reap begins working with no code change.
+Turn teams back on only for work that genuinely needs teammates messaging each other
+over a shared task list - and say so explicitly at the time. It must never be the
+standing default, because ordinary delegation gets silently upgraded into it.
 
-If a pane orphans anyway (Claude Code issue #29787), `--reap` already kills the
-pane and the PID together. Manual fallback, in order:
-   - map panes: tmux list-panes -t <session> -F '#{pane_id} #{pane_pid} #{pane_current_command}'
-   - identify the LEAD pane (your own shell pid) and NEVER kill it
-   - tmux kill-pane -t %<id> the teammate pane(s)  (or run scripts/stop.sh)
-   - never kill by image name (`pkill node`) - that takes down the harness too
-5. Guaranteed full teardown at session end: exit the lead session (/exit), which
-   auto-terminates remaining teammates. Hard fallback: scripts/stop.sh, or
-   tmux ls then tmux kill-session -t <session>.
-
-Ephemeral lifecycle: never park a finished teammate "in case there's more" -
-respawn fresh when new work actually appears. Run teammates with
-bypassPermissions so no pane freezes on a prompt; check the task list (Ctrl+T)
-for blocked dependencies that leave a teammate idle with nothing to claim.
-
-Self-audit: "□ Teammate idle/done? -> shut it down AND confirm the pane/process
-is actually gone (not merely acknowledged)."
+Self-audit: "[] About to add a shutdown / reap / teardown step? -> Don't. Verify the
+flag reads `0` instead."
 <!-- /FLEET:AGENT-SHUTDOWN -->
 
 <!-- FLEET:RULE0 (managed by fleet-upgrade.sh - do not duplicate) -->
@@ -187,13 +171,19 @@ Before any non-trivial change, every agent (lead and teammates) MUST, silently:
    skeptic, run the build, run `qa/visible-content-checklist.md`. "Done" = verified
    build + render, NOT "the code exists". "It probably works" = not done.
 
-## Model policy (fleet) - opus-first
-Owner instruction, 2026-08-08, verbatim: "why are the agents fable 5... please,
-from now on, use opus 5". This SUPERSEDES balanced routing v2 in full.
-- **Opus 5** (alias `opus`) - DEFAULT for EVERY spawn, code and text alike:
-  frontend, backend, devops/infra, schema/auth/payments, debugging, review,
-  snapshots, commit subjects, boilerplate docs.
-- `fable` is no longer spawned by default. Use it only when the owner names it.
-Frontmatter: every roster agent = `model: opus`. `Agent(...)` spawns pass the
-alias explicitly. NEVER pin a dated/closed model id - aliases survive retirements.
+## Model policy (fleet) - opus-first, sonnet for trivial text
+Owner instruction 2026-08-17. Supersedes opus-first (2026-08-08) and balanced routing
+v2 in full: **no more Fable 5.** Pick the best model for each individual job.
+- **Opus 5** (alias `opus`) - the DEFAULT. Anything that ships or is reviewed as code:
+  frontend, backend, devops/infra, schema/auth/payments, architecture, debugging,
+  review. When torn -> `opus`.
+- **Sonnet 5** (alias `sonnet`) - trivial work carrying no design decision: copy and
+  wording changes, boilerplate/doc fill, commit subjects, snapshot and state entries,
+  mechanical renames, format conversions.
+- **Haiku 4.5** (`claude-haiku-4-5-20251001`) - optional, for high-volume mechanical
+  passes where Sonnet is overkill. Name it deliberately or not at all.
+- **`fable` is retired. Never spawn it.**
+Frontmatter: every roster agent stays `model: opus` - they are all senior roles.
+`Agent(...)` spawns pass the alias explicitly. NEVER pin a dated/closed model id -
+aliases survive retirements; the Haiku id above is the one documented exception.
 <!-- /FLEET:RULE0 -->

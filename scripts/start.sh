@@ -44,8 +44,9 @@ unset VSCODE_SHELL_INTEGRATION VSCODE_INJECTION 2>/dev/null || true
 # Create session in project dir
 tmux "${TMUX_FLAGS[@]}" new-session -d -s "$SESSION" -c "$WORK_DIR"
 
-# Set agent teams env var for the session (inherited by teammate panes)
-tmux set-environment -t "$SESSION" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS 1
+# Agent teams stay OFF - a named subagent would otherwise launch as a teammate
+# and never self-terminate. Settings files override this anyway; keep them agreed.
+tmux set-environment -t "$SESSION" CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS 0
 
 # Pass the PATH we just verified into the session, so panes find the same
 # claude binary this script found — even if their shell rc does not add it
@@ -60,10 +61,9 @@ tmux set-option -t "$SESSION" pane-border-status top
 tmux set-option -t "$SESSION" pane-border-format " #{pane_title} "
 tmux select-pane -t "$SESSION:0.0" -T "CLAUDE"
 
-# Left pane: launch Claude with agent teams enabled
-# Official Agent Teams: teammates auto-appear as tmux split panes
-# Requires: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 (env) + teammateMode: "tmux" (settings)
-tmux send-keys -t "$SESSION:0.0" "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 && claude --dangerously-skip-permissions" C-m
+# Left pane: launch Claude. Agent teams are off by default (see above); subagents
+# run in-process, return their result to the caller and exit on their own.
+tmux send-keys -t "$SESSION:0.0" "claude --dangerously-skip-permissions" C-m
 
 # Focus Claude pane
 tmux select-pane -t "$SESSION:0.0"

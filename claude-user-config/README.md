@@ -39,7 +39,7 @@ Pre-approved bash/edit/agent/team/MCP tools so the assistant never blocks on per
 
 ### Agent Teams
 
-`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` + `teammateMode: "tmux"` enables the official Agent Teams mechanism with tmux split-pane display.
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0` keeps agent teams OFF, which is the harness default and what you want: with the flag on, a subagent Claude *names* launches as a teammate, and teammates never self-terminate - they idle in the agent panel forever. `teammateMode` is left unset (default `"in-process"`). Turn teams on only for work that genuinely needs teammates messaging each other, and turn it back off afterwards.
 
 ## Install
 

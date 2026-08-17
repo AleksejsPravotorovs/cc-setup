@@ -67,15 +67,19 @@ When skeptic or QA report findings:
 4. **Repeat**, max 2 cycles, then document the residual in `findings.md` and ship or revert
 
 ## Teardown
-The moment a deliverable is verified: `scripts/reap-teammates.sh --reap`, proved by
-`--check` (reads `ps`). `ListAgents`, the agent panel and the task list are NOT proof,
-and "idle" is not "finished". Never `pkill node`.
-
+**There is none, and you must not invent one.** Agent teams are OFF
+(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "0"`), so a named subagent is an ordinary
+subagent: it returns its result to you on completion and terminates by itself. The
+old `scripts/reap-teammates.sh` doctrine pointed at a script that was never synced
+into this repo, and is moot now that teams are off.
+Never `pkill node`.
 ## Output format
 - `decomposition.md` section (before spawning)
 - Task list per agent + merge order + Definition of Done
 - Verified findings with attribution carried through
 
-## Model routing (opus-first, 2026-08-08)
-Every `Agent(...)` spawn passes `model: "opus"` explicitly - code and text alike.
-`fable` only when the owner names it. Never pin a dated id - aliases survive retirements.
+## Model routing (opus-first, sonnet for trivial text - 2026-08-17)
+Every `Agent(...)` spawn passes its alias explicitly. `model: "opus"` is the default
+for anything that ships or is reviewed as code. `model: "sonnet"` for trivial work
+with no design decision (copy edits, boilerplate, commit subjects, state entries).
+`fable` is retired - never spawn it. Never pin a dated id; aliases survive retirements.

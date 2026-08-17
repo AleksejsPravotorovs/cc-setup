@@ -20,8 +20,10 @@ PERMISSION block. Hard rules:
 - Subagents MUST NOT `Write`/`Edit` under `.claude/**` or `.git/**` - `Bash` heredoc instead
 - Artifacts live at repo root (`decomposition.md`, `findings.md`, `research/`, `qa/`) - never `.claude/`
 - Subagents NEVER ask the user questions - pre-authorized, work autonomously
-- **Model: opus-first.** Every spawn passes `model: "opus"` explicitly - code and text alike.
-  `fable` only when the owner names it. Never a dated id.
+- **Model: opus-first, sonnet for trivial text.** Every spawn passes its alias
+  explicitly: `model: "opus"` for anything that ships or is reviewed as code (the
+  default), `model: "sonnet"` for trivial work with no design decision. `fable` is
+  retired - never spawn it. Never a dated id.
 
 ---
 
@@ -403,21 +405,18 @@ deliverable is verified - even while others still work.
 3. Re-verify via SendMessage to the still-alive skeptic/QA.
 4. Max 2 cycles, then the severity gate applies (document residual, ship or revert).
 
-### Phase 4: Teardown (see AGENTS.md "Shut down completed teammates")
-The teardown is ONE command, run the moment a deliverable is verified:
-```
-scripts/reap-teammates.sh --reap     # kill every teammate, verified by PID
-scripts/reap-teammates.sh --check    # the ONLY accepted proof they are gone
-```
-`ListAgents`, the agent panel and the task list are NOT proof - all three have been
-measured lying in both directions. "Idle" is not "finished": `TeammateIdle` fires mid
-tool-call and `SubagentStop` does not reliably fire at all. Orphaned pane (Claude Code
-#29787): `--reap` kills pane and PID together; never `pkill node`. Session end
-(`/exit`) auto-terminates the rest. Then update `findings.md` with resolved items.
+### Phase 4: Teardown - there isn't one
+**Do not write a teardown step.** Agent teams are OFF
+(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "0"` in both settings files), so every named
+subagent launches as an ordinary **subagent**: its result returns to the coordinator
+when it completes and the process ends on its own. Nothing to reap, nothing to verify
+by PID, no orphan panes.
 
-This applies to BACKGROUND SUBAGENTS spawned in S/M mode too - named background
-workers idle after reporting and stay resident.
+The previous version of this phase commanded `scripts/reap-teammates.sh --reap`. That
+script exists in the cc-setup fleet repo but was never synced here, so it never ran - and the doctrine that made
+every spawn a teammate is exactly what left idle rows resident in the agent panel.
 
+When the deliverable is verified, just update `findings.md` with resolved items.
 ## Findings automation
 - **skeptic/reviewer** appends to `findings.md` (repo root) after every review: new
   findings under section + severity heading, with source attribution fields.
@@ -430,14 +429,15 @@ workers idle after reporting and stay resident.
 - If an agent starts doing another agent's job, STOP and redirect.
 
 ## Prerequisites and display
-- Claude Code v2.1.178+, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, `teammateMode` in
-  settings.json (default `"in-process"` since v2.1.179; our fleet sets `"tmux"` for
-  split panes). Split panes need tmux or iTerm2 (`it2`); not VS Code terminal,
-  Windows Terminal or Ghostty.
-- Navigation: Shift+Down cycles teammates (in-process) / click pane (tmux); Ctrl+T task
-  list; Escape interrupts; Alt+Arrows move panes; prefix+z zooms.
-- Launch: if not already in tmux, `./scripts/start.sh`.
-
+- **Agent teams are OFF by default and that is correct.**
+  `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is `"0"`, `teammateMode` is unset (harness
+  default `"in-process"`). Named subagents therefore behave as subagents: results
+  return to the caller, processes self-terminate.
+- Turning it back to `"1"` is a deliberate, stated decision for work that genuinely
+  needs teammates messaging each other over a shared task list. Never leave it on as
+  a standing default - with it on, ordinary delegation is silently upgraded into a
+  team, and an orchestration flow that waits on subagent results can stall.
+- Navigation (in-process): Shift+Down cycles agents; Ctrl+T task list; Escape interrupts.
 ## Plan approval mode
 L-mode risky tasks only: teammates plan read-only until the coordinator approves. Give
 explicit approval criteria ("only approve plans that include test coverage"). Skip for

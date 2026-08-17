@@ -88,6 +88,6 @@ Per-task guardrails (PLAN/CODE docs, TASK block) belong to the TASK, after prime
 - Ask only truly blocking questions; otherwise state assumptions and proceed.
 - No new deps / no global tooling changes / no rewrites unless asked.
 - Model policy opus-first: every `Agent(...)` spawn passes `model: "opus"` - code and
-  text alike. `fable` only when the owner names it. Never a dated id.
+  text alike; `model: "sonnet"` for trivial text-only work. `fable` is retired - never spawn it. Never a dated id.
 - Multi-agent work runs the coordinator doctrine (AGENTS.md): blank-slate subagents,
   brief-is-the-only-channel, hub-and-spoke, `decomposition.md` before the first spawn.

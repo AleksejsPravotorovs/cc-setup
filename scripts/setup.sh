@@ -621,8 +621,9 @@ mkdir -p "$HOME/.claude"
 if [ -f "$USER_SETTINGS" ]; then
   NEEDS_UPDATE=false
 
-  grep -q "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" "$USER_SETTINGS" 2>/dev/null || NEEDS_UPDATE=true
-  grep -q '"teammateMode"' "$USER_SETTINGS" 2>/dev/null || NEEDS_UPDATE=true
+  # Agent teams stay OFF: with the flag on, a *named* subagent launches as a
+  # teammate, and teammates never self-terminate (idle rows pile up in the panel).
+  grep -q '"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"' "$USER_SETTINGS" 2>/dev/null || NEEDS_UPDATE=true
 
   if [ "$NEEDS_UPDATE" = true ]; then
     info "Updating user settings for agent teams..."
@@ -631,26 +632,25 @@ import json, sys
 path = sys.argv[1]
 with open(path) as f:
     s = json.load(f)
-s.setdefault('env', {})['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'] = '1'
-s['teammateMode'] = 'tmux'
+s.setdefault('env', {})['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'] = '0'
+s.pop('teammateMode', None)   # harness default is "in-process"
 with open(path, 'w') as f:
     json.dump(s, f, indent=2)
     f.write('\n')
-" "$USER_SETTINGS" && log "Updated $USER_SETTINGS (agent teams + tmux mode)" \
+" "$USER_SETTINGS" && log "Updated $USER_SETTINGS (agent teams off, default teammate mode)" \
                    || warn "Could not auto-update $USER_SETTINGS — add manually"
   else
-    log "User settings: agent teams + teammateMode already configured"
+    log "User settings: agent teams already off"
   fi
 else
   cat > "$USER_SETTINGS" <<'JSON'
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  },
-  "teammateMode": "tmux"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
+  }
 }
 JSON
-  log "Created $USER_SETTINGS (agent teams + tmux mode)"
+  log "Created $USER_SETTINGS (agent teams off)"
 fi
 
 # ─── Verify config files ─────────────────────────────────────────
@@ -825,8 +825,8 @@ echo "    .tmux.agent.conf             Agent-optimized config (mouse, pane label
 echo "    scripts/start.sh             Launcher (sources .tmux.agent.conf)"
 echo ""
 echo "  Agent Teams (Official Mechanism):"
-echo "    CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1  Enabled in settings + tmux environment"
-echo "    teammateMode: tmux                      Teammates auto-create split panes"
+echo "    CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0  Agent teams OFF (harness default)"
+echo "    teammateMode unset                      Default \"in-process\"; no orphan panes"
 echo "    .claude/settings.json                   Project-level settings"
 echo "    ~/.claude/settings.json                 User-level settings"
 echo "    .claude/agents/              ${#EXPECTED_AGENTS[@]} agents: ${EXPECTED_AGENTS[*]}"
@@ -858,7 +858,7 @@ echo ""
 echo "  How agent teams work:"
 echo "    1. start.sh launches Claude inside tmux"
 echo "    2. /build-with-agent-team creates team via official Agent Teams API"
-echo "    3. Teammates auto-appear as tmux split panes (teammateMode: tmux)"
+echo "    3. Subagents run in-process and exit on their own; no teardown needed"
 echo "    4. Shift+Down cycles between teammates, click pane to interact"
 echo "    5. Lead coordinates via shared task list + messaging"
 echo "    6. Teammates communicate directly via SendMessage"

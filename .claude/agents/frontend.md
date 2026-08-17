@@ -33,7 +33,7 @@ Vercel/Linear-caliber design engineer. The craft lives in details users feel but
 
 ## Model routing (opus-first, 2026-08-08)
 This agent always runs Opus 5 (`model: opus`) – the fleet default for every spawn, code and text alike.
-`fable` is spawned only when the owner names it. Never pin a dated id – aliases only.
+`sonnet` handles trivial text-only work with no design decision. `fable` is retired - never spawn it. Never pin a dated id - aliases only.
 
 ## Lock
 - Use existing UI-kit components and design tokens. shadcn token discipline per FRONTEND_SKILL_POLICY.md: `bg-background`, `text-foreground`, `border-border`, `bg-primary` – never inline literal hex; redefine the token instead.

@@ -92,9 +92,9 @@ System-reminder hooks saying "You MUST run Skill(X)" are lexical-match suggestio
 Stack:
 - `~/.claude/hooks/auto-approve.sh` (PreToolUse) + `auto-approve-permission-request.sh` (PermissionRequest)
 - `~/.claude/settings.json`: `permissionExplainerEnabled: false`, `defaultMode: "bypassPermissions"`, `skipDangerousModePermissionPrompt: true`
-- `.claude/settings.json` (project): same + `teammateMode: "tmux"`, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
+- `.claude/settings.json` (project): same + `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0` (agent teams off; `teammateMode` unset)
 - `.vscode/settings.json` (workspace): `chat.tools.global.autoApprove: true`, `chat.tools.autoApprove: true`, `chat.tools.terminal.autoApprove: {"/.*/":true}`, `chat.tools.edits.autoApprove: {"**/*":true}`, `chat.agent.maxRequests: 999`, `chat.confirmBeforeRequest: false`
-- User-level VS Code: `claudeCode.allowDangerouslySkipPermissions: true`, `claudeCode.initialPermissionMode: "bypassPermissions"`, `claudeCode.teammateMode: "tmux"`, `claudeCode.permissionExplainerEnabled: false`
+- User-level VS Code: `claudeCode.allowDangerouslySkipPermissions: true`, `claudeCode.initialPermissionMode: "bypassPermissions"`, `claudeCode.permissionExplainerEnabled: false`
 
 Handles 99% of cases. Does NOT cover the hardcoded `.claude/**` / `.git/**` safeguard — **Rule 1 is the only defense** there.
 
@@ -443,9 +443,9 @@ No `AskUserQuestion`, no "should I…?". Pick simplest option, proceed.
 
 ## Rule 6 — Auto-approve stack (belt, not mandate)
 - `~/.claude/hooks/auto-approve.sh` (PreToolUse) + `auto-approve-permission-request.sh` (PermissionRequest)
-- `~/.claude/settings.json` + project `.claude/settings.json`: `permissionExplainerEnabled: false`, `defaultMode: "bypassPermissions"`, `skipDangerousModePermissionPrompt: true`, `teammateMode: "tmux"`
+- `~/.claude/settings.json` + project `.claude/settings.json`: `permissionExplainerEnabled: false`, `defaultMode: "bypassPermissions"`, `skipDangerousModePermissionPrompt: true`, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "0"`
 - `.vscode/settings.json` (workspace): `chat.tools.global.autoApprove: true`, `chat.tools.autoApprove: true`, `chat.tools.terminal.autoApprove: {"/.*/":true}`, `chat.tools.edits.autoApprove: {"**/*":true}`, `chat.agent.maxRequests: 999`, `chat.confirmBeforeRequest: false`
-- User-level VS Code: `claudeCode.allowDangerouslySkipPermissions: true`, `claudeCode.initialPermissionMode: "bypassPermissions"`, `claudeCode.permissionExplainerEnabled: false`, `claudeCode.teammateMode: "tmux"`
+- User-level VS Code: `claudeCode.allowDangerouslySkipPermissions: true`, `claudeCode.initialPermissionMode: "bypassPermissions"`, `claudeCode.permissionExplainerEnabled: false`
 
 These handle 99%. The hardcoded `.claude/**` safeguard is NOT covered — Rule 1 is the only defense.
 
@@ -491,9 +491,8 @@ if command -v jq >/dev/null 2>&1 && [ -f .claude/settings.json ]; then
   jq --arg hook_pre "$HOOK_PRE_PATH" --arg hook_pr "$HOOK_PR_PATH" '
     .permissions.defaultMode = "bypassPermissions"
     | .skipDangerousModePermissionPrompt = true
-    | .teammateMode = "tmux"
     | .permissionExplainerEnabled = false
-    | .env = ((.env // {}) | .CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1")
+    | .env = ((.env // {}) | .CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "0")
     | .hooks = (.hooks // {})
     | .hooks.PreToolUse = (
         ((.hooks.PreToolUse // [])
@@ -509,10 +508,9 @@ elif [ ! -f .claude/settings.json ]; then
   # Create a minimal one so downstream sections have something to verify
   cat > .claude/settings.json <<JSON_EOF
 {
-  "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" },
+  "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0" },
   "permissions": { "defaultMode": "bypassPermissions" },
   "skipDangerousModePermissionPrompt": true,
-  "teammateMode": "tmux",
   "permissionExplainerEnabled": false,
   "hooks": {
     "PreToolUse": [

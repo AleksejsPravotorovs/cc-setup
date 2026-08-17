@@ -141,16 +141,15 @@ function Start-NativeClaude {
         $minimal = @'
 {
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  },
-  "teammateMode": "in-process"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
+  }
 }
 '@
         [System.IO.File]::WriteAllText($settingsPath, $minimal, (New-Object System.Text.UTF8Encoding($false)))
         Write-Host "[i] Created .claude\settings.json with teammateMode 'in-process'." -ForegroundColor Cyan
     }
 
-    $env:CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"
+    $env:CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "0"
     Invoke-NativeInteractive { claude }
     exit $LASTEXITCODE
 }

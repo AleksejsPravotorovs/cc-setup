@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+# DEPRECATED 2026-08-17 - DO NOT RUN. Superseded by model policy v3.
+#
+# This script rolls out "Model Routing v2": fable for code, opus for template text.
+# That policy is retired - the owner retired Fable 5 outright ("No more Fable 5").
+# Current policy: Opus 5 default, Sonnet 5 for trivial text with no design decision,
+# Haiku 4.5 for high-volume mechanical passes, fable never spawned.
+#
+# Running this would overwrite every tracked project's AGENTS.md and roster with the
+# old fable-first policy. Its own preflight now fails anyway (it requires
+# "model: fable" frontmatter, which no agent carries any more). Kept only as history.
+if [ "${ALLOW_DEPRECATED_MODEL_ROUTING:-0}" != "1" ]; then
+  echo "propagate-model-routing.sh is DEPRECATED (model routing v2 / fable-first)." >&2
+  echo "Model policy v3 retired fable. Refusing to run." >&2
+  exit 1
+fi
 # propagate-model-routing.sh
 # Fleet rollout of Model Routing v2 (2026-07-21):
 #   Fable 5 (alias `fable`) = default for anything that ships as code;
