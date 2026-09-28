@@ -76,6 +76,12 @@ if [ "$MODE" = "cc-setup" ]; then
   fi
 
   echo ""
+  if [ -x "$PROJECT_DIR/scripts/propagate-durance-design.sh" ]; then
+    info "Propagating the durance-design skill to every frontend repo (vault + ~/Downloads scan)..."
+    bash "$PROJECT_DIR/scripts/propagate-durance-design.sh" --verbose || warn "durance-design propagation returned non-zero - review output above"
+  fi
+
+  echo ""
   ok "pp-update complete."
   echo ""
   info "To refresh a bootstrapped project's .claude/ files, cd into it and run pp-update there."
@@ -137,6 +143,48 @@ if [ -d "$PROJECT_DIR/.claude/skills" ]; then
     echo "  .claude/skills/$skill.md"
     curl -fsSL "$REPO_URL/.claude/skills/$skill.md" -o "$PROJECT_DIR/.claude/skills/$skill.md" 2>/dev/null || warn "    (missing remotely - skipped)"
   done
+fi
+
+# durance-design: the design + frontend doctrine distilled from the durance.dev
+# rework (2026-09). Installed into any project that has a frontend (package.json
+# with next/react/vue/svelte/vite/astro/nuxt, or an index.html), and refreshed on
+# every pp-update so the fleet always carries the latest design knowledge.
+has_frontend=0
+for pj in "$PROJECT_DIR/package.json" "$PROJECT_DIR"/*/package.json; do
+  [ -f "$pj" ] || continue
+  case "$pj" in */node_modules/*|*/.next/*|*/dist/*|*/build/*) continue ;; esac
+  if grep -Eq '"(next|react|vue|svelte|vite|astro|nuxt|solid-js|@angular/core)"[[:space:]]*:' "$pj"; then has_frontend=1; break; fi
+done
+if [ "$has_frontend" = "0" ]; then
+  for h in "$PROJECT_DIR/index.html" "$PROJECT_DIR"/*/index.html; do
+    [ -f "$h" ] || continue
+    case "$h" in */node_modules/*|*/.next/*|*/dist/*|*/build/*|*/out/*) continue ;; esac
+    has_frontend=1; break
+  done
+fi
+if [ "$has_frontend" = "1" ] || [ -d "$PROJECT_DIR/.claude/skills/durance-design" ]; then
+  info "Frontend detected - refreshing the durance-design skill..."
+  mkdir -p "$PROJECT_DIR/.claude/skills/durance-design/references" "$PROJECT_DIR/.claude/skills/durance-design/templates" "$PROJECT_DIR/.claude/skills/durance-design/scripts"
+  for f in SKILL.md references/visual-system.md references/motion.md references/process-and-gates.md \
+           templates/MotionController.tsx templates/MotionToggle.tsx templates/reveal.css templates/tokens.css \
+           scripts/shoot-page.mjs scripts/check-design.sh scripts/hf-cap.sh; do
+    echo "  .claude/skills/durance-design/$f"
+    curl -fsSL "$REPO_URL/skills/durance-design/$f" -o "$PROJECT_DIR/.claude/skills/durance-design/$f" 2>/dev/null || warn "    (missing remotely - skipped)"
+  done
+  chmod +x "$PROJECT_DIR"/.claude/skills/durance-design/scripts/*.sh 2>/dev/null || true
+fi
+
+# Fleet-wide: when a cc-setup clone is present, pull it and push the durance-design skill
+# into EVERY frontend repo it can find (vault notes + ~/Downloads scan), so one pp-update
+# from any project refreshes the whole fleet's design knowledge.
+CC_SETUP_CLONE="${CC_SETUP_DIR:-$HOME/Downloads/cc-setup}"
+if [ -x "$CC_SETUP_CLONE/scripts/propagate-durance-design.sh" ] && [ "$CC_SETUP_CLONE" != "$PROJECT_DIR" ]; then
+  echo ""
+  info "cc-setup clone found at $CC_SETUP_CLONE - refreshing it and propagating durance-design fleet-wide..."
+  if [ -d "$CC_SETUP_CLONE/.git" ]; then
+    git -C "$CC_SETUP_CLONE" pull --ff-only >/dev/null 2>&1 && ok "cc-setup clone up to date" || warn "cc-setup pull failed (local changes?) - propagating from the current checkout"
+  fi
+  bash "$CC_SETUP_CLONE/scripts/propagate-durance-design.sh" || warn "durance-design propagation returned non-zero - review output above"
 fi
 
 # Design research docs live at research/design/ (outside .claude/ - protected-path safeguard avoidance)

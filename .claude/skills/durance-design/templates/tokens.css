@@ -1,0 +1,55 @@
+/* durance-design tokens. Source of truth for colour, radius, shadow and type. Mirror every
+   value into tailwind.config theme.extend ("change one, change both"). Swap the accent hue
+   for the brand; keep the tiers, the ratios and the DECORATION-ONLY discipline.
+   Components read the SEMANTIC band variables (--surface, --fg, --border), never the raw ones. */
+:root {
+  /* raw: grounds */
+  --cream: #faf9f5; --cream-dark: #f1eee9; --bento: #f4f2f0; --white: #ffffff; --warm-frame: #e7e3db;
+  --anthracite: #1c1c1c; --anthracite-card: #171717; --raised: #222222; --raised-2: #2a2a2a; --black: #000000;
+  /* raw: ink (light side, all >= 4.5:1 on cream) */
+  --ink: #1c1b19; --ink-2: #404040; --ink-3: #6b6a67; --ink-quiet: #536a5d; --ink-faint: #a1a1a1; /* faint: DECORATION ONLY */
+  /* raw: paper (dark side) */
+  --paper: #ffffff; --paper-2: #d4d4d4; --paper-3: #a3a3a3; --paper-quiet: #809789; --paper-faint: #6b6b6b; /* faint: DECORATION ONLY */
+  /* raw: accent. Bright accent is DECORATION ONLY on light (1.43:1); accent-ink carries meaning on light. */
+  --accent: #34e3a3; --accent-ink: #1a7654;
+  /* raw: lines */
+  --line: rgba(0,0,0,.07); --line-soft: rgba(0,0,0,.05); --line-strong: #e5e5e5; --line-dash: rgba(0,0,0,.15);
+  --line-dark: #232323; --line-dark-soft: rgba(255,255,255,.08); --line-dark-strong: rgba(255,255,255,.2); --line-dark-dash: rgba(255,255,255,.22);
+  /* glass */
+  --glass-nav-light: rgba(255,255,255,.95); --glass-nav-dark: rgba(23,23,23,.9); --glass-pill: rgba(10,10,10,.9);
+  /* radii: buttons are square */
+  --radius-card: 6px; --radius-tile: 8px; --radius-sm: 4px; --radius: 10px; --radius-btn: 0; --radius-pill: 9999px;
+  /* shadows: neutral, low alpha, long offset */
+  --shadow-hero: 0 24px 60px rgba(28,28,28,.10); --shadow-hover: 0 8px 30px rgba(0,0,0,.06); --shadow-dark: 0 30px 70px rgba(0,0,0,.4);
+  /* layout */
+  --container: 1360px; --gutter: 24px; --section-y: 80px; --section-y-md: 112px;
+  /* type: one sans for everything, one mono for 10px tags only */
+  --fs-display: clamp(2rem, 5.4vw, 3.375rem); --fs-h2: 26px; --fs-h2-md: 38px; --fs-intro: 18px; --fs-body: 14px; --fs-tag: 10px;
+}
+
+/* semantic band variables; set by data-band on each section */
+[data-band="cream"], [data-band="morph"], .site-root[data-theme="light"] [data-band="morph"] {
+  --surface: var(--cream); --surface-card: var(--cream-dark); --surface-raised: var(--white); --surface-raised-2: var(--cream-dark);
+  --fg: var(--ink); --fg-2: var(--ink-2); --fg-3: var(--ink-3); --fg-quiet: var(--ink-quiet); --fg-faint: var(--ink-faint); --fg-accent: var(--accent-ink);
+  --border: var(--line); --border-soft: var(--line-soft); --border-strong: var(--line-strong); --rule: var(--line-dash);
+}
+[data-band="morph"] { --surface: var(--white); --surface-card: var(--bento); }
+[data-band="dark"], .site-root[data-theme="dark"] [data-band="morph"] {
+  --surface: var(--anthracite); --surface-card: var(--anthracite-card); --surface-raised: var(--raised); --surface-raised-2: var(--raised-2);
+  --fg: var(--paper); --fg-2: var(--paper-2); --fg-3: var(--paper-3); --fg-quiet: var(--paper-quiet); --fg-faint: var(--paper-faint); --fg-accent: var(--accent);
+  --border: var(--line-dark); --border-soft: var(--line-dark-soft); --border-strong: var(--line-dark-strong); --rule: var(--line-dark-dash);
+}
+[data-band] { background: var(--surface); color: var(--fg); box-shadow: 0 0 0 1px var(--surface); /* seals subpixel seams between isolated bands */ }
+[data-band="morph"] { transition: background-color var(--dur-morph, 800ms) var(--ease-out-expo), color var(--dur-morph, 800ms) var(--ease-out-expo),
+  --surface var(--dur-morph, 800ms) var(--ease-out-expo), --surface-card var(--dur-morph, 800ms) var(--ease-out-expo),
+  --fg var(--dur-morph, 800ms) var(--ease-out-expo), --fg-3 var(--dur-morph, 800ms) var(--ease-out-expo), --border var(--dur-morph, 800ms) var(--ease-out-expo); }
+/* transitioned custom properties must be registered or they snap */
+@property --surface { syntax: '<color>'; inherits: true; initial-value: #faf9f5; }
+@property --surface-card { syntax: '<color>'; inherits: true; initial-value: #f1eee9; }
+@property --fg { syntax: '<color>'; inherits: true; initial-value: #1c1b19; }
+@property --fg-3 { syntax: '<color>'; inherits: true; initial-value: #6b6a67; }
+@property --border { syntax: '<color>'; inherits: true; initial-value: #e5e5e5; }
+@media (prefers-reduced-motion: reduce) { [data-band="morph"] { transition-duration: 150ms; } }
+
+/* focus ring, global */
+.site-root :focus-visible { outline: 2px solid var(--fg-accent); outline-offset: 2px; }

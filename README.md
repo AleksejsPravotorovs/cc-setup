@@ -43,6 +43,7 @@ Open your project folder in VS Code, open the terminal, paste the command, and f
 - `scripts/start.sh` — tmux session launcher (macOS/Linux)
 - `scripts/start.ps1` — WSL tmux session launcher (Windows)
 - `scripts/apply-self-edit-safeguard-fix.sh` — idempotent patcher that applies the full protocol (agents, skills, commands, settings, hooks) to any project
+- `skills/durance-design/` - the fleet's design + frontend doctrine (trust narrative, tokens, type, motion on every block, process, gates), distilled from the durance.dev rework; ships with drop-in `templates/` (motion controller, reveal CSS, tokens) and `scripts/` (filmstrip shooter, design lock, image cost cap). Installed into every frontend repo as `.claude/skills/durance-design/` by `scripts/propagate-durance-design.sh`; loads on "design" / "frontend" / "landing" / "redesign".
 - `CLAUDE.md`, `AGENTS.md` — project instructions (AGENTS.md holds the canonical 8-rule PROMPT_FREE_PROTOCOL, loaded into every session via `CLAUDE.md: @AGENTS.md`)
 
 **User-scope Claude Code setup** (optional, macOS/Linux):
@@ -53,7 +54,7 @@ Open your project folder in VS Code, open the terminal, paste the command, and f
 **Quick commands added** (persisted in shell profile):
 - `pp` — launch Claude session (tmux + split pane git watch, `--dangerously-skip-permissions`)
 - `pp-setup` — re-run setup for this project
-- `pp-update` — pull latest `cc-setup` files from GitHub + auto-apply the safeguard protocol
+- `pp-update` - pull latest `cc-setup` files from GitHub + auto-apply the safeguard protocol + refresh the `durance-design` skill in every frontend repo (vault projects and `~/Downloads` scan)
 
 ## Usage
 

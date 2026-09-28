@@ -53,6 +53,7 @@ This agent always runs Opus 5 (`model: opus`) – the fleet default for every sp
 
 | Symptom / need | Command |
 |---|---|
+| ANY design or frontend work - load FIRST, it is the fleet's look and motion doctrine | `Skill(durance-design)` |
 | Building or animating any UI | `Skill(emil-design-eng)` |
 | Need the exact term for a motion effect | `Skill(animation-vocabulary)` |
 | Strict review of animation code / diff | `Skill(review-animations)` |

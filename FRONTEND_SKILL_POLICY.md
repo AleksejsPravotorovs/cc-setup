@@ -14,6 +14,10 @@ downstream: qa/visible-content-checklist.md, devops propagation script (task #3)
 
 The harness auto-fires multiple visual skills on the same file (shadcn, ai-elements, react-best-practices, nextjs, agent-browser, plus opt-in art/scroll/SVG/motion lanes). Without a policy, they collide and produce **invisible content**: text the same color as the background, full-screen canvases over the app, sticky scenes hiding modals. This document is the canonical rulebook. Every project that imports it inherits one baseline and one set of dormant lanes.
 
+## 0. Always-on doctrine: `durance-design` (2026-09-28)
+
+One skill is exempt from the dormant lane below: **`durance-design`** (`.claude/skills/durance-design/SKILL.md`, fleet-managed by `cc-setup/scripts/propagate-durance-design.sh` and refreshed by `pp-update`). It loads on the words "design", "frontend", "landing", "website", "homepage", "redesign", "UI", "hero", "section" and whenever a reference site is named. It is the look and the process that produced durance.dev: the trust narrative, three grounds with one morph, tokens in two files, weight-450 sentence-case type, reveal-on-every-block motion with a governed loop library, filmstrip comparison against one live reference, and the five-check gate. It owns colour discipline, typography rules, motion rules and process; the SPSS baseline below owns which Tailwind token names exist in a given repo. Where they collide on token NAMES, the repo's baseline wins; on everything else, `durance-design` wins.
+
 ## 1. Single Primary Style Skill (SPSS)
 
 **Active baseline = `shadcn/ui` + Tailwind.**
