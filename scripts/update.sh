@@ -78,7 +78,7 @@ if [ "$MODE" = "cc-setup" ]; then
   echo ""
   if [ -x "$PROJECT_DIR/scripts/propagate-durance-design.sh" ]; then
     info "Propagating the durance-design skill to every frontend repo (vault + ~/Downloads scan)..."
-    bash "$PROJECT_DIR/scripts/propagate-durance-design.sh" --verbose || warn "durance-design propagation returned non-zero - review output above"
+    bash "$PROJECT_DIR/scripts/propagate-durance-design.sh" --verbose --include-non-git || warn "durance-design propagation returned non-zero - review output above"
   fi
 
   echo ""
@@ -184,7 +184,7 @@ if [ -x "$CC_SETUP_CLONE/scripts/propagate-durance-design.sh" ] && [ "$CC_SETUP_
   if [ -d "$CC_SETUP_CLONE/.git" ]; then
     git -C "$CC_SETUP_CLONE" pull --ff-only >/dev/null 2>&1 && ok "cc-setup clone up to date" || warn "cc-setup pull failed (local changes?) - propagating from the current checkout"
   fi
-  bash "$CC_SETUP_CLONE/scripts/propagate-durance-design.sh" || warn "durance-design propagation returned non-zero - review output above"
+  bash "$CC_SETUP_CLONE/scripts/propagate-durance-design.sh" --include-non-git || warn "durance-design propagation returned non-zero - review output above"
 fi
 
 # Design research docs live at research/design/ (outside .claude/ - protected-path safeguard avoidance)
