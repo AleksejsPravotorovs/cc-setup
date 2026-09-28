@@ -65,6 +65,7 @@ done
 # --- Frontend design add-on (opt-in) ---
 echo ""
 echo "Optional: frontend design add-on"
+echo "  • durance-design  the fleet design + frontend doctrine (rules, tokens, motion templates, filmstrip + lock scripts)"
 echo "  • 4 skills        premium-design, scroll-animations, section-transitions, design-system-extraction"
 echo "  • 6 research docs bold-design, scroll-driven UI, video smoothing, section transitions, ..."
 echo "  • scroll-animations TS library (animations.ts, easings.ts, ...)"
@@ -79,6 +80,13 @@ if [[ "$INSTALL_FRONTEND" == "y" ]]; then
     echo "  Downloading .claude/skills/$skill.md..."
     curl -fsSL "$REPO/.claude/skills/$skill.md" -o ".claude/skills/$skill.md"
   done
+
+  mkdir -p .claude/skills/durance-design/references .claude/skills/durance-design/templates .claude/skills/durance-design/scripts
+  for f in SKILL.md references/visual-system.md references/motion.md references/process-and-gates.md templates/MotionController.tsx templates/MotionToggle.tsx templates/reveal.css templates/tokens.css scripts/shoot-page.mjs scripts/check-design.sh scripts/hf-cap.sh; do
+    echo "  Downloading .claude/skills/durance-design/$f..."
+    curl -fsSL "$REPO/skills/durance-design/$f" -o ".claude/skills/durance-design/$f"
+  done
+  chmod +x .claude/skills/durance-design/scripts/*.sh 2>/dev/null || true
 
   for doc in bold-design-principles premium-design-system-template scroll-driven-ui-roadmap-template scroll-scrubbed-video section-transitions-spec video-smoothing; do
     echo "  Downloading research/design/$doc.md..."

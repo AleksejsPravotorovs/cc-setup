@@ -49,6 +49,7 @@ foreach ($file in @(".claude\settings.json", "CLAUDE.md", "AGENTS.md")) {
 # --- Frontend design add-on (opt-in) ---
 Write-Host ""
 Write-Host "Optional: frontend design add-on"
+Write-Host "  * durance-design  the fleet design + frontend doctrine (rules, tokens, motion templates, scripts)"
 Write-Host "  * 4 skills        premium-design, scroll-animations, section-transitions, design-system-extraction"
 Write-Host "  * 6 research docs bold-design, scroll-driven UI, video smoothing, section transitions, ..."
 Write-Host "  * scroll-animations TS library (animations.ts, easings.ts, ...)"
@@ -61,6 +62,14 @@ if ($installFrontend -eq "y") {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
 
+    foreach ($dir in @(".claude\skills\durance-design\references", ".claude\skills\durance-design\templates", ".claude\skills\durance-design\scripts")) {
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    }
+    foreach ($f in @("SKILL.md", "references/visual-system.md", "references/motion.md", "references/process-and-gates.md", "templates/MotionController.tsx", "templates/MotionToggle.tsx", "templates/reveal.css", "templates/tokens.css", "scripts/shoot-page.mjs", "scripts/check-design.sh", "scripts/hf-cap.sh")) {
+        $rel = $f -replace "/", "\"
+        Write-Host "  Downloading .claude\skills\durance-design\$rel..."
+        Invoke-WebRequest "$repo/skills/durance-design/$f" -OutFile ".claude\skills\durance-design\$rel" -UseBasicParsing
+    }
     foreach ($skill in @("premium-design", "scroll-animations", "section-transitions", "design-system-extraction")) {
         Write-Host "  Downloading .claude\skills\$skill.md..."
         Invoke-WebRequest "$repo/.claude/skills/$skill.md" -OutFile ".claude\skills\$skill.md" -UseBasicParsing

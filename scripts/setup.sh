@@ -670,6 +670,7 @@ if [ -d ".claude/skills" ]; then
   for skill in "${EXPECTED_SKILLS[@]}"; do
     [ -f ".claude/skills/${skill}.md" ] || { warn "Missing: .claude/skills/${skill}.md"; MISSING=$((MISSING+1)); }
   done
+  [ -f ".claude/skills/durance-design/SKILL.md" ] || { warn "Missing: .claude/skills/durance-design/SKILL.md (run pp-update to fetch the design doctrine)"; MISSING=$((MISSING+1)); }
 else
   info "Frontend skills not installed (optional — re-run install.sh and answer 'y' to the frontend prompt)"
 fi
@@ -837,6 +838,7 @@ echo "    .claude/snapshots/           Deploy snapshot dir"
 echo ""
 echo "  Skills (auto-inject during frontend work):"
 echo "    .claude/skills/              ${#EXPECTED_SKILLS[@]} skills: ${EXPECTED_SKILLS[*]}"
+echo "    .claude/skills/durance-design/  the fleet design + frontend doctrine (loads on design / frontend / landing / redesign)"
 echo ""
 echo "  Quick commands (added to shell profile):"
 echo "    pp                           Launch Claude session in current folder (tmux + git watch)"

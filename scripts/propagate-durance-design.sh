@@ -17,7 +17,8 @@
 #      same skip rules as propagate-design-loop.sh).
 #   2. --scan <dir> (repeatable; default ~/Downloads): every child directory that is a
 #      git repo. Bare directories without .git are skipped unless --include-non-git.
-# A repo qualifies when it HAS A FRONTEND: a package.json (root or one level down,
+# A repo qualifies when it HAS A FRONTEND (or the cc-setup frontend set is installed,
+# i.e. .claude/skills/ exists): a package.json (root or one level down,
 # not node_modules) that depends on next/react/vue/svelte/vite/astro/nuxt/solid, or
 # an index.html at the root or one level down (static sites), excluding dist/,
 # build/, .next/, node_modules/. Everything else is skipped.
@@ -87,6 +88,7 @@ get_fm() {  # file key
 
 has_frontend() {  # dir -> 0/1
   local d="$1" pj
+  [ -d "$d/.claude/skills" ] && return 0   # cc-setup frontend set installed: a frontend is coming
   for pj in "$d/package.json" "$d"/*/package.json; do
     [ -f "$pj" ] || continue
     case "$pj" in */node_modules/*|*/.next/*|*/dist/*|*/build/*) continue ;; esac

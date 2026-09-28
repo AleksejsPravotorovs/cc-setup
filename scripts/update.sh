@@ -162,7 +162,7 @@ if [ "$has_frontend" = "0" ]; then
     has_frontend=1; break
   done
 fi
-if [ "$has_frontend" = "1" ] || [ -d "$PROJECT_DIR/.claude/skills/durance-design" ]; then
+if [ "$has_frontend" = "1" ] || [ -d "$PROJECT_DIR/.claude/skills" ]; then
   info "Frontend detected - refreshing the durance-design skill..."
   mkdir -p "$PROJECT_DIR/.claude/skills/durance-design/references" "$PROJECT_DIR/.claude/skills/durance-design/templates" "$PROJECT_DIR/.claude/skills/durance-design/scripts"
   for f in SKILL.md references/visual-system.md references/motion.md references/process-and-gates.md \
